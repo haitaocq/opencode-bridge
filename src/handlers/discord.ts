@@ -444,6 +444,14 @@ class DiscordHandler {
       }
     );
 
+    // 新创建会话，发送 ///help 命令和提醒消息
+    await this.safeReply(
+      event,
+      `///help
+
+⚠️ 当前会话未与 OpenCode 绑定，已新建会话并绑定。
+如需切换请按照 help 提示操作。`
+    );
     return session.id;
   }
 
@@ -1645,7 +1653,15 @@ class DiscordHandler {
 
     const decision = parsePermissionDecision(text);
     if (!decision) {
-      await this.safeReply(event, '当前有待确认权限，请回复：允许 / 拒绝 / 始终允许（支持 y / n / always）');
+      await this.safeReply(
+        event,
+        `⚠️ 有待处理的权限请求：
+- 工具：${pending.tool}
+- 说明：${pending.description}
+${pending.risk ? `- 风险：${pending.risk}` : ''}
+
+请回复"允许"或"拒绝"来确认权限。`
+      );
       return true;
     }
 
