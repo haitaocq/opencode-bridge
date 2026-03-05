@@ -34,3 +34,6 @@ temp/
 
 # TypeScript
 *.tsbuildinfo
+
+# Sisyphus AI 代理工作目录
+.sisyphus/

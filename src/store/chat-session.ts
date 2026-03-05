@@ -467,6 +467,54 @@ class ChatSessionStore {
     this.save();
   }
 
+  updateConfigByConversation(
+    platform: string,
+    conversationId: string,
+    config: {
+      preferredModel?: string;
+      preferredAgent?: string;
+      preferredEffort?: EffortLevel;
+      defaultDirectory?: string;
+    }
+  ): void {
+    const session = this.getSessionByConversation(platform, conversationId);
+    if (!session) return;
+
+    if ('preferredModel' in config) {
+      if (config.preferredModel) {
+        session.preferredModel = config.preferredModel;
+      } else {
+        delete session.preferredModel;
+      }
+    }
+
+    if ('preferredAgent' in config) {
+      if (config.preferredAgent) {
+        session.preferredAgent = config.preferredAgent;
+      } else {
+        delete session.preferredAgent;
+      }
+    }
+
+    if ('preferredEffort' in config) {
+      if (config.preferredEffort) {
+        session.preferredEffort = config.preferredEffort;
+      } else {
+        delete session.preferredEffort;
+      }
+    }
+
+    if ('defaultDirectory' in config) {
+      if (config.defaultDirectory) {
+        session.defaultDirectory = config.defaultDirectory;
+      } else {
+        delete session.defaultDirectory;
+      }
+    }
+
+    this.save();
+  }
+
   updateTitle(chatId: string, title: string): void {
     const session = this.getChatDataLegacyOrNamespaced(chatId);
     if (session) {

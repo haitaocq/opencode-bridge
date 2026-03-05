@@ -1,8 +1,10 @@
 # 飞书 × OpenCode 桥接服务 v2.8.2 (Group)
 
+[![v2.8.2](https://img.shields.io/badge/v2.8.2-3178C6)]()
 [![Node.js >= 18](https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
 
 把 OpenCode 接进飞书，不止是“把消息转发过去”，而是把权限确认、提问作答、会话绑定、流式输出、双端撤回、清理兜底和部署运维做成可长期运行的工程化链路。
 
@@ -241,7 +243,7 @@ flowchart TB
 ### Discord 对齐策略（扬长避短）
 
 - **优先落地**：消息稳定收发、会话绑定、@ 触发治理、可观测日志与可回滚配置。
-- **利用优势**：Discord 文本链路低摩擦，先交付高可用问答与命令链路（`/session`、`/new`、`/clear`）。
+- **利用优势**：Discord 文本链路低摩擦，先交付高可用问答与命令链路（`///session`、`///new`、`///clear`，并兼容旧前缀）。
 - **避免短板硬上**：对 Discord 不天然友好的“飞书式卡片工作流”不做粗暴复制，后续按组件交互逐步演进。
 
 <a id="快速开始"></a>
@@ -448,11 +450,15 @@ node scripts/deploy.mjs status
 
 - 频道/私聊消息接入与自动会话绑定
 - 文本问答闭环（请求 OpenCode 后回帖）
-- 流式输出“简洁主回复 + 折叠思考（Spoiler）”展示
-- question 交互闭环（下拉作答 + 文本自定义答案 + 跳过本题）
+- 流式输出展示：分隔符 + 思维链路代码块 + 最终答复正文
+- OpenCode 会话命名：`Discord 私聊/群聊 <ID前6位> <频道ID前6位>`
+- question 交互闭环（显示题干 + 下拉作答 + 文本自定义答案 + 跳过本题）
 - 机器人消息发送、回复、编辑、删除
-- 频道命令：`//session`、`//new`、`//bind`、`//rename`、`//sessions`、`//clear`
-- 下拉控制面板：`//panel`（查看状态/新建/绑定/重命名/清理）
+- 会话频道创建：`///new-channel`（频道名 `opencode{sessionID前6位(去前缀)}`，权限不足自动回退当前频道绑定）
+- 频道删除自动解绑：监听 `ChannelDelete` 自动清理本地会话映射
+- 频道删除自动销毁会话：仅对 Discord 新建会话生效；外部绑定会话受保护不删除
+- 频道命令：`///session`、`///new`、`///new-channel`、`///bind`、`///unbind`、`///rename`、`///sessions`、`///workdir`、`///send`、`///clear`
+- 下拉控制面板：`///create_chat`（同卡片多下拉：会话/模型/角色；强度使用命令行）
 
 当前明确不硬做的能力（避免低质量体验）：
 
@@ -549,26 +555,39 @@ node scripts/deploy.mjs status
 | `/send <绝对路径>` | 发送指定路径的文件到当前群聊 |
 | `/status` | 查看当前群绑定状态 |
 
-Discord 侧推荐命令（优先 `//` 前缀，避免与原生 Slash 冲突）：
+Discord 侧推荐命令（优先 `///` 前缀，避免与原生 Slash 冲突）：
 
-- `//session`：查看当前频道绑定的 OpenCode 会话
-- `//new [可选名称]`：新建并绑定会话
-- `//bind <sessionId>`：绑定已有会话
-- `//rename <新名称>`：重命名当前会话
-- `//sessions`：查看最近可绑定会话
-- `//clear`：删除并解绑当前频道会话
-- `//panel`：打开下拉会话控制面板（查看状态/新建/绑定/重命名/清理）
+- `///session`：查看当前频道绑定的 OpenCode 会话
+- `///new [可选名称] [--dir 路径|别名]`：新建并绑定会话
+- `///new-channel [可选名称] [--dir 路径|别名]`：新建会话频道并绑定
+- `///bind <sessionId>`：绑定已有会话
+- `///unbind`：仅解绑当前频道会话
+- `///rename <新名称>`：重命名当前会话
+- `///sessions`：查看最近可绑定会话
+- `///effort`：查看当前强度
+- `///effort <档位>`：设置会话默认强度（按当前模型能力校验）
+- `///effort default`：清除会话强度
+- `///workdir [路径|别名|clear]`：设置/查看默认工作目录
+- `///undo`：回撤上一轮
+- `///compact` / `///compat`：压缩上下文
+- `///send <绝对路径>`：发送白名单文件到当前频道
+- `发送文件 <绝对路径>`：中文自然语言触发发送白名单文件
+- `///clear`：删除并解绑当前频道会话
+- `///create_chat`：打开下拉会话控制面板（查看状态/新建/绑定/模型/角色/回撤/压缩）
+- `///create_chat model <页码>`：打开模型分页面板（总容量最多 500，单页 24）
+- `///create_chat session|agent|effort`：打开分类面板
 
 说明：
 
 - 已保留兼容命令：`/session`、`/new`、`/new-session`、`/clear`。
-- `//panel` 使用 Discord 下拉菜单与弹窗（Modal），用于补齐会话控制体验。
+- `///create_chat` 使用 Discord 下拉菜单与弹窗（Modal），用于补齐会话控制体验。
+- `///clear` 在会话频道（topic 带 `oc-session:`）中会尝试直接删除频道；若权限不足则只解绑。
 
 - `!` 透传仅支持白名单命令；`vi`/`vim`/`nano` 等交互式编辑器不会透传。
 - 单条临时覆盖可在消息开头使用 `#low` / `#high` / `#max` / `#xhigh`（仅当前条生效）。
-- 强度优先级：`#临时覆盖` > `/effort 会话默认` > 模型默认。
-- `/session` 列表列顺序固定为：`工作区目录 | SessionID | OpenCode侧会话名称 | 绑定群明细 | 当前会话状态`。
-- `/create_chat` 下拉标签顺序固定为：`工作区 / Session短ID / 简介`，并按工作区聚合展示。
+- 强度优先级：`#临时覆盖` > `///effort 会话默认` > 模型默认。
+- `///sessions` 列表列顺序固定为：`工作区目录 | SessionID | OpenCode侧会话名称 | 绑定群明细 | 当前会话状态`。
+- `///create_chat` 下拉标签顺序固定为：`工作区 / Session短ID / 简介`，并按工作区聚合展示。
 
 <a id="Agent（角色）使用"></a>
 ## 🤖 Agent（角色）使用

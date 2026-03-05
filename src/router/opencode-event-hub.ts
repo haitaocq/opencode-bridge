@@ -133,6 +133,7 @@ export interface OpenCodeEventContext {
 export class OpenCodeEventHub {
   private context: OpenCodeEventContext | null = null;
   private registered: boolean = false;
+  private userMessageIdsBySession = new Map<string, Set<string>>();
 
   private resolveConversationRoute(
     sessionId: string,
@@ -159,6 +160,35 @@ export class OpenCodeEventHub {
       bufferKey,
       permissionChatKey,
     };
+  }
+
+  private rememberUserMessageId(sessionId: string, messageId: string): void {
+    const normalizedMessageId = messageId.trim();
+    if (!normalizedMessageId) {
+      return;
+    }
+
+    const existing = this.userMessageIdsBySession.get(sessionId) || new Set<string>();
+    existing.add(normalizedMessageId);
+    if (existing.size > 20) {
+      const oldest = existing.values().next().value;
+      if (typeof oldest === 'string') {
+        existing.delete(oldest);
+      }
+    }
+    this.userMessageIdsBySession.set(sessionId, existing);
+  }
+
+  private isUserMessagePart(sessionId: string, messageId: string): boolean {
+    const existing = this.userMessageIdsBySession.get(sessionId);
+    if (!existing) {
+      return false;
+    }
+    return existing.has(messageId);
+  }
+
+  private clearUserMessageIds(sessionId: string): void {
+    this.userMessageIdsBySession.delete(sessionId);
   }
 
   /**
@@ -342,6 +372,7 @@ export class OpenCodeEventHub {
     if (buffer && buffer.status === 'running') {
       outputBuffer.setStatus(bufferKey, 'completed');
     }
+    this.clearUserMessageIds(sessionID);
   }
 
   private async handleMessageUpdated(event: unknown): Promise<void> {
@@ -353,11 +384,18 @@ export class OpenCodeEventHub {
     const info = eventObj?.info as Record<string, unknown> | undefined;
     if (!info || typeof info !== 'object') return;
 
-    const role = typeof info.role === 'string' ? info.role : '';
-    if (role !== 'assistant') return;
-
     const sessionID = toSessionId(info.sessionID);
     if (!sessionID) return;
+
+    const role = typeof info.role === 'string' ? info.role : '';
+    if (role === 'user') {
+      if (typeof info.id === 'string' && info.id) {
+        this.rememberUserMessageId(sessionID, info.id);
+      }
+      return;
+    }
+
+    if (role !== 'assistant') return;
 
     const chatId = chatSessionStore.getChatId(sessionID);
     if (!chatId) return;
@@ -391,6 +429,7 @@ export class OpenCodeEventHub {
     if (!sessionID) return;
     const text = formatProviderError(eventObj?.error);
     await applyFailureToSession(sessionID, text);
+    this.clearUserMessageIds(sessionID);
   }
 
   private handleMessagePartUpdated(event: unknown): void {
@@ -424,20 +463,25 @@ export class OpenCodeEventHub {
 
     const eventObj = event as Record<string, unknown>;
     const part = eventObj?.part as Record<string, unknown> | undefined;
-    const sessionID = eventObj?.sessionID || part?.sessionID;
+    const sessionID = toSessionId(eventObj?.sessionID || part?.sessionID);
     const delta = eventObj?.delta;
     if (!sessionID) return;
 
-    const chatId = chatSessionStore.getChatId(sessionID as string);
-    if (!chatId) return;
-
-    const route = this.resolveConversationRoute(sessionID as string, chatId);
-    const bufferKey = route.bufferKey;
-    if (!outputBuffer.get(bufferKey)) {
-      outputBuffer.getOrCreate(bufferKey, route.conversationId, sessionID as string, null);
+    const partMessageId = typeof part?.messageID === 'string' ? part.messageID : '';
+    if (partMessageId && this.isUserMessagePart(sessionID, partMessageId)) {
+      return;
     }
 
-    chatSessionStore.rememberSessionAlias(sessionID as string, chatId, CORRELATION_CACHE_TTL_MS);
+    const chatId = chatSessionStore.getChatId(sessionID);
+    if (!chatId) return;
+
+    const route = this.resolveConversationRoute(sessionID, chatId);
+    const bufferKey = route.bufferKey;
+    if (!outputBuffer.get(bufferKey)) {
+      outputBuffer.getOrCreate(bufferKey, route.conversationId, sessionID, null);
+    }
+
+    chatSessionStore.rememberSessionAlias(sessionID, chatId, CORRELATION_CACHE_TTL_MS);
 
     // Tool 处理
     if (part?.type === 'tool' && typeof part === 'object') {

@@ -67,7 +67,25 @@ export const discordConfig = {
 
   // Discord Client ID（当前用于配置兼容，后续 OAuth/交互可直接复用）
   clientId: process.env.DISCORD_CLIENT_ID?.trim() || '',
-};
+
+  // 允许其他 Bot 添加到白名单（逗号分隔的 Discord snowflake ID 列表）
+  // 仅接受纯数字格式的 ID，无效 ID 会被跳过
+  allowedBotIds: (() => {
+    const raw = process.env.DISCORD_ALLOWED_BOT_IDS || '';
+    return raw
+      .split(',')
+      .map(item => item.trim())
+      .filter(item => {
+        if (!item) return false;
+        // Discord snowflake 是纯数字
+        if (!/^\d+$/.test(item)) {
+          console.warn(`[Config] 无效的 Bot ID "${item}" 已被跳过（需为纯数字）`);
+          return false;
+        }
+        return true;
+      });
+  })(),
+  };
 
 // 群聊消息触发策略
 export const groupConfig = {

@@ -18,6 +18,7 @@ import type {
   PlatformSender,
 } from '../types.js';
 import { discordConfig } from '../../config.js';
+import { opencodeClient } from '../../opencode/client.js';
 import { chatSessionStore } from '../../store/chat-session.js';
 
 const DISCORD_MESSAGE_LIMIT = 1800;
@@ -255,28 +256,33 @@ class DiscordSender implements PlatformSender {
     }
 
     let firstMessageId: string | null = null;
-    for (let index = 0; index < chunks.length; index++) {
-      const chunk = chunks[index];
-      if (!chunk) {
-        continue;
-      }
+    try {
+      for (let index = 0; index < chunks.length; index++) {
+        const chunk = chunks[index];
+        if (!chunk) {
+          continue;
+        }
 
-      const sent = index === 0
-        ? await message.reply(chunk)
-        : await this.sendText(conversationId, chunk).then(async sentId => {
-          if (!sentId) {
-            throw new Error('Discord 发送失败');
-          }
-          const sentMessage = await this.adapter.fetchMessage(conversationId, sentId);
-          if (!sentMessage) {
-            throw new Error('Discord 发送后读取消息失败');
-          }
-          return sentMessage;
-        });
-      this.adapter.rememberMessageConversation(sent.id, conversationId);
-      if (!firstMessageId) {
-        firstMessageId = sent.id;
+        const sent = index === 0
+          ? await message.reply(chunk)
+          : await this.sendText(conversationId, chunk).then(async sentId => {
+            if (!sentId) {
+              throw new Error('Discord 发送失败');
+            }
+            const sentMessage = await this.adapter.fetchMessage(conversationId, sentId);
+            if (!sentMessage) {
+              throw new Error('Discord 发送后读取消息失败');
+            }
+            return sentMessage;
+          });
+        this.adapter.rememberMessageConversation(sent.id, conversationId);
+        if (!firstMessageId) {
+          firstMessageId = sent.id;
+        }
       }
+    } catch (error) {
+      console.warn('[Discord] reply 失败，降级为普通发送:', error);
+      return this.sendText(conversationId, text);
     }
 
     return firstMessageId;
@@ -293,9 +299,14 @@ class DiscordSender implements PlatformSender {
       return null;
     }
 
-    const sent = await message.reply(this.normalizeCardPayload(card));
-    this.adapter.rememberMessageConversation(sent.id, conversationId);
-    return sent.id;
+    try {
+      const sent = await message.reply(this.normalizeCardPayload(card));
+      this.adapter.rememberMessageConversation(sent.id, conversationId);
+      return sent.id;
+    } catch (error) {
+      console.warn('[Discord] replyCard 失败，降级为普通发送:', error);
+      return this.sendCard(conversationId, card);
+    }
   }
 }
 
@@ -352,11 +363,15 @@ export class DiscordAdapter implements PlatformAdapter {
     });
 
     client.on(Events.MessageCreate, message => {
-      void this.handleMessageCreate(message);
+      void this.handleMessageCreate(message).catch(error => {
+        console.error('[Discord] MessageCreate 处理失败:', error);
+      });
     });
 
     client.on(Events.InteractionCreate, interaction => {
-      void this.handleInteractionCreate(interaction);
+      void this.handleInteractionCreate(interaction).catch(error => {
+        console.error('[Discord] InteractionCreate 处理失败:', error);
+      });
     });
 
     client.on(Events.MessageDelete, message => {
@@ -369,6 +384,36 @@ export class DiscordAdapter implements PlatformAdapter {
       for (const callback of this.messageRecalledCallbacks) {
         callback(payload);
       }
+    });
+
+    client.on(Events.ChannelDelete, channel => {
+      void (async () => {
+        this.forgetConversationMessages(channel.id);
+        const sessionData = chatSessionStore.getSessionByConversation('discord', channel.id);
+        const sessionId = sessionData?.sessionId;
+        const shouldDeleteSession = Boolean(sessionId) && sessionData?.protectSessionDelete !== true;
+        chatSessionStore.removeSessionByConversation('discord', channel.id);
+        console.log(`[Discord] 频道已删除，自动解绑会话: ${channel.id}`);
+
+        if (!sessionId || !shouldDeleteSession) {
+          if (sessionId && !shouldDeleteSession) {
+            console.log(`[Discord] 绑定会话受保护，跳过自动删除: ${sessionId}`);
+          }
+          return;
+        }
+
+        const deleted = await opencodeClient.deleteSession(
+          sessionId,
+          sessionData?.resolvedDirectory ? { directory: sessionData.resolvedDirectory } : undefined
+        ).catch(() => false);
+        if (deleted) {
+          console.log(`[Discord] 频道删除后已销毁 OpenCode 会话: ${sessionId}`);
+        } else {
+          console.warn(`[Discord] 频道删除后销毁会话失败: ${sessionId}`);
+        }
+      })().catch(error => {
+        console.error('[Discord] ChannelDelete 处理失败:', error);
+      });
     });
 
     this.client = client;
@@ -432,6 +477,14 @@ export class DiscordAdapter implements PlatformAdapter {
     this.messageConversationMap.delete(messageId);
   }
 
+  forgetConversationMessages(conversationId: string): void {
+    for (const [messageId, mappedConversationId] of this.messageConversationMap.entries()) {
+      if (mappedConversationId === conversationId) {
+        this.messageConversationMap.delete(messageId);
+      }
+    }
+  }
+
   async resolveTextChannel(conversationId: string): Promise<DiscordSendableChannel | null> {
     if (!this.client) {
       return null;
@@ -459,8 +512,27 @@ export class DiscordAdapter implements PlatformAdapter {
   }
 
   private async handleMessageCreate(message: Message): Promise<void> {
-    if (!this.client || message.author.bot) {
+    if (!this.client) {
       return;
+    }
+
+    // 自己发的消息始终跳过
+    const selfBotId = this.client.user?.id;
+    if (selfBotId && message.author.id === selfBotId) {
+      return;
+    }
+
+    // 其他 bot 根据白名单判断
+    if (message.author.bot) {
+      const allowedBotIds = discordConfig.allowedBotIds;
+      // 白名单为空则拒绝所有 bot
+      if (!allowedBotIds || allowedBotIds.length === 0) {
+        return;
+      }
+      // 不在白名单则拒绝
+      if (!allowedBotIds.includes(message.author.id)) {
+        return;
+      }
     }
 
     const botId = this.client.user?.id;
@@ -510,7 +582,11 @@ export class DiscordAdapter implements PlatformAdapter {
     this.rememberMessageConversation(message.id, message.channelId);
 
     for (const callback of this.messageCallbacks) {
-      await Promise.resolve(callback(event));
+      try {
+        await Promise.resolve(callback(event));
+      } catch (error) {
+        console.error('[Discord] 消息回调执行失败:', error);
+      }
     }
   }
 
@@ -532,12 +608,20 @@ export class DiscordAdapter implements PlatformAdapter {
       };
 
       for (const callback of this.actionCallbacks) {
-        await Promise.resolve(callback(event));
+        try {
+          await Promise.resolve(callback(event));
+        } catch (error) {
+          console.error('[Discord] 动作回调执行失败:', error);
+        }
       }
     }
 
     for (const callback of this.interactionCallbacks) {
-      await Promise.resolve(callback(interaction));
+      try {
+        await Promise.resolve(callback(interaction));
+      } catch (error) {
+        console.error('[Discord] 交互回调执行失败:', error);
+      }
     }
   }
 }

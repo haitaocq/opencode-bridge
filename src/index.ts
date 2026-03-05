@@ -476,55 +476,52 @@ async function main() {
   };
 
   const buildPortableUpdateText = (data: StreamCardData): string => {
-    const blocks: string[] = [];
     const mainText = data.text.trim();
+    const thinkingText = data.thinking.trim();
+
+    if (mainText && thinkingText) {
+      const safeThinking = thinkingText.replace(/```/g, '` ` `');
+      const clippedThinking = safeThinking.length > 1400
+        ? `${safeThinking.slice(0, 1400)}\n...(思考内容已截断)`
+        : safeThinking;
+      return [
+        '-----------',
+        '```md',
+        clippedThinking,
+        '```',
+        '-----------',
+        mainText,
+      ].join('\n');
+    }
 
     if (mainText) {
-      blocks.push(mainText);
-    } else if (data.status === 'processing') {
-      blocks.push('⏳ 正在处理...');
+      return `-----------\n${mainText}`;
     }
 
-    const activeTools = data.tools.filter(tool => tool.status === 'pending' || tool.status === 'running');
-    if (activeTools.length > 0) {
-      const toolSummary = activeTools.map(tool => `${tool.name}(${tool.status})`).join(' · ');
-      blocks.push(`🛠️ 执行中: ${toolSummary}`);
-    }
-
-    if (data.pendingPermission) {
-      blocks.push(`🔐 待确认权限: ${data.pendingPermission.tool}`);
-    }
-
-    if (data.pendingQuestion) {
-      const questionNumber = data.pendingQuestion.questionIndex + 1;
-      blocks.push(`❓ 待回答问题 (${questionNumber}/${data.pendingQuestion.totalQuestions}): ${data.pendingQuestion.question}`);
-      blocks.push('可通过下拉菜单选择答案，或直接发送文本作为自定义答案。');
-    }
-
-    if (!mainText && data.status === 'completed') {
-      blocks.push('✅ 已完成');
+    if (thinkingText) {
+      const safeThinking = thinkingText.replace(/```/g, '` ` `');
+      const clippedThinking = safeThinking.length > 1400
+        ? `${safeThinking.slice(0, 1400)}\n...(思考内容已截断)`
+        : safeThinking;
+      return [
+        '-----------',
+        '```md',
+        clippedThinking,
+        '```',
+        '-----------',
+        '⏳ 正在处理...',
+      ].join('\n');
     }
 
     if (data.status === 'failed') {
-      blocks.push('❌ 执行失败');
+      return '❌ 执行失败';
     }
 
-    const thinkingText = data.thinking.trim();
-    if (thinkingText) {
-      const safeThinking = thinkingText
-        .replace(/\|\|/g, '| |')
-        .slice(0, 1200);
-      const clippedThinking = safeThinking.length < thinkingText.length
-        ? `${safeThinking}\n...(思考内容已截断)`
-        : safeThinking;
-      blocks.push(`🧠 思考（点击展开）\n||${clippedThinking}||`);
+    if (data.status === 'completed') {
+      return '✅ 已完成';
     }
 
-    if (blocks.length === 0) {
-      return '⏳ 正在处理...';
-    }
-
-    return blocks.join('\n\n');
+    return '⏳ 正在处理...';
   };
 
   const buildPortableUpdatePayload = (data: StreamCardData, conversationId: string): { discordText: string; discordComponents?: Array<{
@@ -535,10 +532,14 @@ async function main() {
     minValues?: number;
     maxValues?: number;
   }> } => {
-    const discordText = buildPortableUpdateText(data);
+    const baseText = buildPortableUpdateText(data);
     if (!data.pendingQuestion) {
-      return { discordText };
+      return { discordText: baseText };
     }
+
+    const questionLine = `❓ ${data.pendingQuestion.question}`;
+    const progressLine = `第 ${data.pendingQuestion.questionIndex + 1}/${data.pendingQuestion.totalQuestions} 题`;
+    const discordText = `${baseText}\n${questionLine}\n${progressLine}`;
 
     const optionList = data.pendingQuestion.options
       .filter(option => option.label.trim().length > 0)
