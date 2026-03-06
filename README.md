@@ -560,7 +560,8 @@ node scripts/deploy.mjs status
 | `/status` | 查看当前群绑定状态 |
 
 Discord 侧推荐命令（优先 `///` 前缀，避免与原生 Slash 冲突）：
-
+| 命令 | 说明 |
+|---|---|
 | `///session`| 查看当前频道绑定的 OpenCode 会话 |
 | `///new [可选名称] [--dir 路径|别名]`| 新建并绑定会话 |
 | `///new-channel [可选名称] [--dir 路径|别名]`| 新建会话频道并绑定 |
