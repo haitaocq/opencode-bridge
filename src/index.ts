@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { feishuClient, type FeishuMessageEvent } from './feishu/client.js';
 import { feishuAdapter } from './platform/adapters/feishu-adapter.js';
 import { discordAdapter } from './platform/adapters/discord-adapter.js';
@@ -130,6 +131,22 @@ export const createRescueOrchestrator = (
         }
 
         logger.info(`[Reliability] watchdog rescue start reason=${policyDecision.reason}`);
+
+        const startOpenCode = async (): Promise<void> => {
+          return new Promise((resolve, reject) => {
+            try {
+              const child = spawn('opencode', [], {
+                detached: true,
+                stdio: 'ignore',
+              });
+              child.unref();
+              setTimeout(() => resolve(), 2000);
+            } catch (error) {
+              reject(error);
+            }
+          });
+        };
+
         const rescueResult = await executeRescuePipeline({
           lockTargetPath: './logs/opencode-rescue',
           pidFilePath: './logs/opencode.pid',
@@ -144,6 +161,7 @@ export const createRescueOrchestrator = (
               password: opencodeConfig.serverPassword,
             },
           },
+          startOpenCode,
         });
 
         if (!rescueResult.ok) {
