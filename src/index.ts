@@ -16,6 +16,8 @@ import { cardActionHandler } from './handlers/card-action.js';
 import { validateConfig, routerConfig, outputConfig } from './config.js';
 import { rootRouter } from './router/root-router.js';
 import { ConversationHeartbeatEngine } from './reliability/conversation-heartbeat.js';
+import { CronScheduler } from './reliability/scheduler.js';
+import { createInternalJobRegistry } from './reliability/job-registry.js';
 import {
   createPermissionActionCallbacks,
   createQuestionActionCallbacks,
@@ -28,6 +30,118 @@ import {
   type StreamCardPendingPermission,
   type StreamCardPendingQuestion,
 } from './feishu/cards-stream.js';
+
+export interface ReliabilityRescueOrchestrator {
+  runWatchdogProbe: () => Promise<void> | void;
+  runStaleCleanup: () => Promise<void> | void;
+  runBudgetReset: () => Promise<void> | void;
+  cleanup: () => Promise<void> | void;
+}
+
+export interface ReliabilityJobHandlers {
+  watchdogProbe: () => Promise<void>;
+  staleCleanup: () => Promise<void>;
+  budgetReset: () => Promise<void>;
+}
+
+export interface ReliabilityScheduler {
+  start: () => void;
+  stop: () => Promise<void>;
+}
+
+export interface ReliabilityLifecycleDependencies {
+  createHeartbeatEngine?: () => Pick<ConversationHeartbeatEngine, 'onInboundMessage'>;
+  createScheduler?: () => ReliabilityScheduler;
+  createRescueOrchestrator?: () => ReliabilityRescueOrchestrator;
+  createJobRegistry?: (handlers: ReliabilityJobHandlers) => {
+    registerAll: (scheduler: ReliabilityScheduler) => void;
+  };
+  logger?: Pick<Console, 'info' | 'error'>;
+}
+
+export interface ReliabilityLifecycle {
+  onInboundMessage: () => Promise<void>;
+  cleanup: () => Promise<void>;
+}
+
+export const createRescueOrchestrator = (
+  logger: Pick<Console, 'info' | 'error'> = console
+): ReliabilityRescueOrchestrator => {
+  return {
+    runWatchdogProbe: async () => {
+      logger.info('[Reliability] watchdog probe tick');
+    },
+    runStaleCleanup: async () => {
+      logger.info('[Reliability] stale cleanup tick');
+    },
+    runBudgetReset: async () => {
+      logger.info('[Reliability] budget reset tick');
+    },
+    cleanup: async () => {
+      logger.info('[Reliability] rescue orchestrator cleaned');
+    },
+  };
+};
+
+export const bootstrapReliabilityLifecycle = (
+  dependencies: ReliabilityLifecycleDependencies = {}
+): ReliabilityLifecycle => {
+  const logger = dependencies.logger ?? console;
+  const heartbeatEngine = dependencies.createHeartbeatEngine?.() ?? new ConversationHeartbeatEngine();
+  const scheduler = dependencies.createScheduler?.() ?? new CronScheduler();
+  const rescueOrchestrator = dependencies.createRescueOrchestrator?.() ?? createRescueOrchestrator(logger);
+
+  const jobHandlers: ReliabilityJobHandlers = {
+    watchdogProbe: async () => {
+      await rescueOrchestrator.runWatchdogProbe();
+    },
+    staleCleanup: async () => {
+      await rescueOrchestrator.runStaleCleanup();
+    },
+    budgetReset: async () => {
+      await rescueOrchestrator.runBudgetReset();
+    },
+  };
+
+  const registry = dependencies.createJobRegistry?.(jobHandlers)
+    ?? {
+      registerAll: (injectedScheduler: ReliabilityScheduler) => {
+        if (!(injectedScheduler instanceof CronScheduler)) {
+          throw new Error('[Reliability] 默认任务注册器要求 CronScheduler 实例');
+        }
+        createInternalJobRegistry({
+          handlers: jobHandlers,
+        }).registerAll(injectedScheduler as CronScheduler);
+      },
+    };
+
+  registry.registerAll(scheduler);
+  scheduler.start();
+  logger.info('[Reliability] bootstrap 完成（heartbeat + scheduler + rescue orchestrator）');
+
+  let cleaned = false;
+
+  return {
+    onInboundMessage: async () => {
+      try {
+        await heartbeatEngine.onInboundMessage();
+      } catch (error) {
+        logger.error('[Heartbeat] 入站触发执行失败:', error);
+      }
+    },
+    cleanup: async () => {
+      if (cleaned) {
+        return;
+      }
+      cleaned = true;
+      await Promise.all([
+        scheduler.stop(),
+        Promise.resolve(rescueOrchestrator.cleanup()),
+      ]);
+      logger.info('[Reliability] cleanup 完成');
+    },
+  };
+};
 
 async function main() {
 
@@ -1256,14 +1370,12 @@ async function main() {
     }
   });
 
+  // 3.5 初始化 Reliability 生命周期（heartbeat + scheduler + rescue orchestrator）
+  const reliabilityLifecycle = bootstrapReliabilityLifecycle();
+
   // 4. 监听飞书消息（通过路由器分发）
-  const conversationHeartbeatEngine = new ConversationHeartbeatEngine();
   feishuClient.on('message', async (event) => {
-    try {
-      await conversationHeartbeatEngine.onInboundMessage();
-    } catch (error) {
-      console.error('[Heartbeat] 入站触发执行失败:', error);
-    }
+    await reliabilityLifecycle.onInboundMessage();
     await rootRouter.onMessage(event);
   });
 
@@ -1404,8 +1516,21 @@ async function main() {
   console.log('✅ 服务已就绪');
   
   // 优雅退出处理
-  const gracefulShutdown = (signal: string) => {
+  let shuttingDown = false;
+  const gracefulShutdown = async (signal: string) => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+
     console.log(`\n[${signal}] 正在关闭服务...`);
+
+    // 停止 reliability 调度和救援资源
+    try {
+      await reliabilityLifecycle.cleanup();
+    } catch (e) {
+      console.error('停止 reliability 资源失败:', e);
+    }
 
     // 停止 Discord 适配器
     try {
@@ -1444,12 +1569,20 @@ async function main() {
     }, 500);
   };
 
-  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-  process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')); // nodemon 重启信号
+  process.on('SIGINT', () => {
+    void gracefulShutdown('SIGINT');
+  });
+  process.on('SIGTERM', () => {
+    void gracefulShutdown('SIGTERM');
+  });
+  process.on('SIGUSR2', () => {
+    void gracefulShutdown('SIGUSR2');
+  }); // nodemon 重启信号
 }
 
-main().catch(error => {
-  console.error('Fatal Error:', error);
-  process.exit(1);
-});
+if (process.env.VITEST !== 'true') {
+  main().catch(error => {
+    console.error('Fatal Error:', error);
+    process.exit(1);
+  });
+}

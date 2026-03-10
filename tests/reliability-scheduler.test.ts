@@ -28,12 +28,16 @@ describe('CronScheduler + JobRegistry', () => {
     const registry = createInternalJobRegistry({
       cronExpressions: {
         watchdogProbe: '*/1 * * * * *',
+        processConsistencyCheck: '*/1 * * * * *',
         staleCleanup: '*/1 * * * * *',
         budgetReset: '*/1 * * * * *',
       },
       handlers: {
         watchdogProbe: async () => {
           executed.push('watchdogProbe');
+        },
+        processConsistencyCheck: async () => {
+          executed.push('processConsistencyCheck');
         },
         staleCleanup: async () => {
           executed.push('staleCleanup');
@@ -46,7 +50,12 @@ describe('CronScheduler + JobRegistry', () => {
 
     registry.registerAll(scheduler);
     const registeredJobIds = scheduler.getRegisteredJobIds().sort();
-    expect(registeredJobIds).toEqual(['budget-reset', 'stale-cleanup', 'watchdog-probe']);
+    expect(registeredJobIds).toEqual([
+      'budget-reset',
+      'process-consistency-check',
+      'stale-cleanup',
+      'watchdog-probe',
+    ]);
 
     scheduler.start();
     await waitMs(1200);
@@ -54,6 +63,7 @@ describe('CronScheduler + JobRegistry', () => {
 
     expect(executed.length).toBeGreaterThan(0);
     expect(executed.includes('watchdogProbe')).toBe(true);
+    expect(executed.includes('processConsistencyCheck')).toBe(true);
     expect(executed.includes('staleCleanup')).toBe(true);
     expect(executed.includes('budgetReset')).toBe(true);
   });

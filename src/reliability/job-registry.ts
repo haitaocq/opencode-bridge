@@ -2,12 +2,14 @@ import { type CronScheduler, type SchedulerJobDefinition } from './scheduler.js'
 
 export interface InternalJobHandlers {
   watchdogProbe: () => Promise<void> | void;
+  processConsistencyCheck: () => Promise<void> | void;
   staleCleanup: () => Promise<void> | void;
   budgetReset: () => Promise<void> | void;
 }
 
 export interface InternalJobCronExpressions {
   watchdogProbe: string;
+  processConsistencyCheck: string;
   staleCleanup: string;
   budgetReset: string;
 }
@@ -20,6 +22,7 @@ export interface InternalJobRegistryOptions {
 
 const DEFAULT_CRON_EXPRESSIONS: InternalJobCronExpressions = {
   watchdogProbe: '*/30 * * * * *',
+  processConsistencyCheck: '0 * * * * *',
   staleCleanup: '0 */5 * * * *',
   budgetReset: '0 0 * * *',
 };
@@ -36,6 +39,7 @@ const createDefinitions = (options: InternalJobRegistryOptions = {}): SchedulerJ
 
   const handlers: InternalJobHandlers = {
     watchdogProbe: options.handlers?.watchdogProbe ?? NOOP_ASYNC_HANDLER,
+    processConsistencyCheck: options.handlers?.processConsistencyCheck ?? NOOP_ASYNC_HANDLER,
     staleCleanup: options.handlers?.staleCleanup ?? NOOP_ASYNC_HANDLER,
     budgetReset: options.handlers?.budgetReset ?? NOOP_ASYNC_HANDLER,
   };
@@ -57,6 +61,15 @@ const createDefinitions = (options: InternalJobRegistryOptions = {}): SchedulerJ
       waitForCompletion: true,
       run: async () => {
         await handlers.staleCleanup();
+      },
+    },
+    {
+      id: 'process-consistency-check',
+      cronExpression: cronExpressions.processConsistencyCheck,
+      timezone: options.timezone,
+      waitForCompletion: true,
+      run: async () => {
+        await handlers.processConsistencyCheck();
       },
     },
     {
