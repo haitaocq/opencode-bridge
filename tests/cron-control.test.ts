@@ -156,4 +156,95 @@ describe('cron-control', () => {
     expect(text).toContain('尚未绑定 OpenCode 会话');
     expect(manager.listJobs()).toHaveLength(0);
   });
+
+  it('cron list 应展示目标窗口、孤儿与回退状态', async () => {
+    const previousForward = process.env.RELIABILITY_CRON_FORWARD_TO_PRIVATE;
+    delete process.env.RELIABILITY_CRON_FALLBACK_FEISHU_CHAT_ID;
+    delete process.env.RELIABILITY_CRON_FALLBACK_DISCORD_CONVERSATION_ID;
+    process.env.RELIABILITY_CRON_FORWARD_TO_PRIVATE = 'true';
+    let cleanupStore: { removeSessionByConversation: (platform: string, conversationId: string) => void } | null = null;
+
+    try {
+      vi.resetModules();
+      const cronModule = await import('../src/reliability/cron-control.js');
+      const storeModule = await import('../src/store/chat-session.js');
+      const { executeCronIntent, parseCronSlashIntent } = cronModule;
+      const { chatSessionStore } = storeModule;
+      cleanupStore = chatSessionStore;
+
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cron-control-status-'));
+      const jobsFile = path.join(root, 'jobs.json');
+      const scheduler = new CronScheduler();
+      const manager = new RuntimeCronManager({
+        scheduler,
+        filePath: jobsFile,
+      });
+
+      chatSessionStore.setSessionByConversation('feishu', 'chat-status-target', 'session-status-1', 'user-status', '群聊-status', {
+        chatType: 'group',
+      });
+      chatSessionStore.setSessionByConversation('feishu', 'chat-status-private', 'session-status-private', 'user-status', '私聊-status', {
+        chatType: 'p2p',
+      });
+
+      manager.addJob({
+        name: 'valid-job',
+        schedule: { kind: 'cron', expr: '0 0 8 * * *' },
+        payload: {
+          kind: 'systemEvent',
+          text: '发送日报',
+          sessionId: 'session-status-1',
+          delivery: {
+            platform: 'feishu',
+            conversationId: 'chat-status-target',
+            creatorId: 'user-status',
+          },
+        },
+        enabled: true,
+      });
+
+      manager.addJob({
+        name: 'orphan-job',
+        schedule: { kind: 'cron', expr: '0 30 8 * * *' },
+        payload: {
+          kind: 'systemEvent',
+          text: '发送新闻',
+          sessionId: 'session-status-2',
+          delivery: {
+            platform: 'feishu',
+            conversationId: 'chat-status-missing',
+            creatorId: 'user-status',
+          },
+        },
+        enabled: true,
+      });
+
+      chatSessionStore.setSessionByConversation('feishu', 'chat-status-migrated', 'session-status-2', 'user-status', '群聊-migrated', {
+        chatType: 'group',
+      });
+
+      const listText = executeCronIntent({
+        manager,
+        intent: parseCronSlashIntent('list'),
+        platform: 'feishu',
+      });
+
+      expect(listText).toContain('（状态基于本地绑定表；fallback 为候选目标）');
+      expect(listText).toContain('target: feishu:chat-status-target（本地绑定有效） | session: session-status-1');
+      expect(listText).toContain('orphan: 否');
+      expect(listText).toContain('target: feishu:chat-status-missing（原会话已迁移到 feishu:chat-status-migrated） | session: session-status-2');
+      expect(listText).toContain('orphan: 是（原会话已迁移到其他窗口）');
+      expect(listText).toContain('fallback: 候选 feishu:chat-status-private（创建者私聊）；原会话已迁移，运行时不会直接回退');
+
+    } finally {
+      cleanupStore?.removeSessionByConversation('feishu', 'chat-status-target');
+      cleanupStore?.removeSessionByConversation('feishu', 'chat-status-private');
+      cleanupStore?.removeSessionByConversation('feishu', 'chat-status-migrated');
+      if (previousForward === undefined) {
+        delete process.env.RELIABILITY_CRON_FORWARD_TO_PRIVATE;
+      } else {
+        process.env.RELIABILITY_CRON_FORWARD_TO_PRIVATE = previousForward;
+      }
+    }
+  });
 });

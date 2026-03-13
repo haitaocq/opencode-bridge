@@ -1,4 +1,5 @@
 import { reliabilityConfig } from '../config.js';
+import { chatSessionStore } from '../store/chat-session.js';
 import type {
   RuntimeCronJob,
   RuntimeCronManager,
@@ -171,16 +172,16 @@ export function executeCronIntent(options: ExecuteCronIntentOptions): string {
       ].join('\n');
     }
 
-    const lines = ['🕒 运行时 Cron 任务列表'];
+    const lines = ['🕒 运行时 Cron 任务列表', '（状态基于本地绑定表；fallback 为候选目标）'];
     for (const job of jobs) {
       const status = job.enabled ? '启用' : '暂停';
       const briefText = brief(job.payload.text, 60);
-      const deliveryLabel = job.payload.delivery
-        ? `${job.payload.delivery.platform}:${job.payload.delivery.conversationId}`
-        : '未绑定窗口';
+      const displayStatus = buildRuntimeCronDisplayStatus(job);
       lines.push(`- [${status}] ${job.id} | ${job.name} | ${job.schedule.expr}`);
       lines.push(`  text: ${briefText}`);
-      lines.push(`  target: ${deliveryLabel} | session: ${job.payload.sessionId || '未绑定'}`);
+      lines.push(`  target: ${displayStatus.targetWindow} | session: ${job.payload.sessionId || '未绑定'}`);
+      lines.push(`  orphan: ${displayStatus.orphanStatus}`);
+      lines.push(`  fallback: ${displayStatus.fallbackStatus}`);
     }
     return lines.join('\n');
   }
@@ -938,4 +939,99 @@ function brief(text: string, maxLength: number): string {
     return text;
   }
   return `${text.slice(0, maxLength - 1)}…`;
+}
+
+function buildRuntimeCronDisplayStatus(job: RuntimeCronJob): {
+  targetWindow: string;
+  orphanStatus: string;
+  fallbackStatus: string;
+} {
+  const sessionId = job.payload.sessionId?.trim();
+  const delivery = job.payload.delivery;
+
+  if (!delivery) {
+    return {
+      targetWindow: '未绑定窗口',
+      orphanStatus: '是（未绑定目标窗口）',
+      fallbackStatus: resolveRuntimeCronFallbackStatus(job),
+    };
+  }
+
+  const targetLabel = `${delivery.platform}:${delivery.conversationId}`;
+  if (!sessionId) {
+    return {
+      targetWindow: `${targetLabel}（未绑定会话）`,
+      orphanStatus: '是（未绑定 OpenCode 会话）',
+      fallbackStatus: resolveRuntimeCronFallbackStatus(job),
+    };
+  }
+
+  const currentBinding = chatSessionStore.getSessionByConversation(delivery.platform, delivery.conversationId);
+  const boundConversation = chatSessionStore.getConversationBySessionId(sessionId);
+  if (
+    boundConversation
+    && (boundConversation.platform !== delivery.platform || boundConversation.conversationId !== delivery.conversationId)
+  ) {
+    return {
+      targetWindow: `${targetLabel}（原会话已迁移到 ${boundConversation.platform}:${boundConversation.conversationId}）`,
+      orphanStatus: '是（原会话已迁移到其他窗口）',
+      fallbackStatus: `${resolveRuntimeCronFallbackStatus(job)}；原会话已迁移，运行时不会直接回退`,
+    };
+  }
+
+  if (!currentBinding) {
+    return {
+      targetWindow: `${targetLabel}（本地未绑定/已失联）`,
+      orphanStatus: '是（目标窗口未绑定或已失联）',
+      fallbackStatus: resolveRuntimeCronFallbackStatus(job),
+    };
+  }
+
+  if (currentBinding.sessionId !== sessionId) {
+    return {
+      targetWindow: `${targetLabel}（已改绑到 ${currentBinding.sessionId}）`,
+      orphanStatus: '是（目标窗口已改绑到其他会话）',
+      fallbackStatus: resolveRuntimeCronFallbackStatus(job),
+    };
+  }
+
+  return {
+    targetWindow: `${targetLabel}（本地绑定有效）`,
+    orphanStatus: '否',
+    fallbackStatus: resolveRuntimeCronFallbackStatus(job),
+  };
+}
+
+function resolveRuntimeCronFallbackStatus(job: RuntimeCronJob): string {
+  if (!reliabilityConfig.cronForwardToPrivateChat) {
+    return '关闭';
+  }
+
+  const delivery = job.payload.delivery;
+  if (!delivery) {
+    return '已启用，但任务未绑定目标窗口';
+  }
+
+  if (delivery.fallbackConversationId) {
+    return `候选 ${delivery.platform}:${delivery.fallbackConversationId}（任务显式）`;
+  }
+
+  if (delivery.platform === 'feishu' && reliabilityConfig.cronFallbackFeishuChatId) {
+    return `候选 feishu:${reliabilityConfig.cronFallbackFeishuChatId}（env）`;
+  }
+
+  if (delivery.platform === 'discord' && reliabilityConfig.cronFallbackDiscordConversationId) {
+    return `候选 discord:${reliabilityConfig.cronFallbackDiscordConversationId}（env）`;
+  }
+
+  if (!delivery.creatorId) {
+    return '已启用，但未找到可用回退目标';
+  }
+
+  const privateBinding = chatSessionStore.findPrivateConversationByCreator(delivery.creatorId, delivery.platform);
+  if (!privateBinding) {
+    return '已启用，但未找到创建者私聊';
+  }
+
+  return `候选 ${privateBinding.platform}:${privateBinding.conversationId}（创建者私聊）`;
 }
