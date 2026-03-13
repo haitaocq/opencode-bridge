@@ -161,6 +161,21 @@ describe('ReliabilityConfig - custom values', () => {
     expect(process.env.OPENCODE_BRIDGE_ACTIVE_ENV_FILE).toBe(path.join(configRoot, '.env'));
   });
 
+  it('指定 config dir 但缺少 .env 时不应伪造 active env file', async () => {
+    snapshotEnv();
+    delete process.env.OPENCODE_BRIDGE_ACTIVE_ENV_FILE;
+    delete process.env.FEISHU_APP_ID;
+    delete process.env.FEISHU_APP_SECRET;
+
+    const configRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-bridge-empty-config-'));
+    process.env.OPENCODE_BRIDGE_CONFIG_DIR = configRoot;
+
+    const configModule = await loadConfigModule();
+    expect(configModule.feishuConfig.appId).toBe('');
+    expect(configModule.feishuConfig.appSecret).toBe('');
+    expect(process.env.OPENCODE_BRIDGE_ACTIVE_ENV_FILE).toBeUndefined();
+  });
+
   it('应支持主动心跳告警会话列表', async () => {
     snapshotEnv();
     process.env.RELIABILITY_HEARTBEAT_ALERT_CHATS = 'oc_1, oc_2 ,';

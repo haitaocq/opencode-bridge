@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import os from 'node:os';
 import path from 'node:path';
 
 const argv = process.argv.slice(2);
@@ -25,8 +24,6 @@ for (let index = 0; index < argv.length; index += 1) {
 
 if (configDir) {
   process.env.OPENCODE_BRIDGE_CONFIG_DIR = path.resolve(configDir);
-} else if (!process.env.OPENCODE_BRIDGE_CONFIG_DIR && !process.env.OPENCODE_BRIDGE_ENV_FILE) {
-  process.env.OPENCODE_BRIDGE_CONFIG_DIR = path.join(os.homedir(), '.config', 'opencode-bridge');
 }
 
 process.argv = [process.argv[0], process.argv[1], ...passthroughArgs];

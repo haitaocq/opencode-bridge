@@ -11,11 +11,13 @@ const defaultEnvFile = path.join(defaultConfigDir, '.env');
 
 const resolvedEnvFile = (() => {
   if (explicitEnvFile) {
-    return path.resolve(explicitEnvFile);
+    const envFile = path.resolve(explicitEnvFile);
+    return fs.existsSync(envFile) ? envFile : undefined;
   }
 
   if (explicitConfigDir) {
-    return path.join(path.resolve(explicitConfigDir), '.env');
+    const envFile = path.join(path.resolve(explicitConfigDir), '.env');
+    return fs.existsSync(envFile) ? envFile : undefined;
   }
 
   if (fs.existsSync(cwdEnvFile)) {
@@ -32,8 +34,6 @@ const resolvedEnvFile = (() => {
 if (resolvedEnvFile) {
   dotenv.config({ path: resolvedEnvFile });
   process.env.OPENCODE_BRIDGE_ACTIVE_ENV_FILE ??= resolvedEnvFile;
-} else {
-  dotenv.config();
 }
 
 function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
