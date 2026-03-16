@@ -38,3 +38,11 @@ temp/
 # Sisyphus AI 代理工作目录
 .sisyphus/
 memory/
+
+# Claude Code 配置
+.claude/
+
+# 临时文档
+HEARTBEAT.md
+PLAN.md
+PLAN_*.md

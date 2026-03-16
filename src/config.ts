@@ -175,8 +175,8 @@ export const opencodeConfig = {
   // 是否自动启动 OpenCode 后台进程
   autoStart: parseBooleanEnv(process.env.OPENCODE_AUTO_START, false),
 
-  // OpenCode 启动命令
-  autoStartCmd: process.env.OPENCODE_AUTO_START_CMD?.trim() || 'opencode',
+  // OpenCode 启动命令（默认使用 serve 后台模式）
+  autoStartCmd: process.env.OPENCODE_AUTO_START_CMD?.trim() || 'opencode serve',
 
   get baseUrl() {
     return `http://${this.host}:${this.port}`;
