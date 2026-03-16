@@ -495,10 +495,45 @@ export const bootstrapReliabilityLifecycle = (
 async function main() {
 
   console.log('╔════════════════════════════════════════════════╗');
-console.log('║   飞书 × OpenCode 桥接服务 v2.9.0 (Group)  ║');
+  console.log('║   飞书 × OpenCode 桥接服务 v2.9.1-beta ║');
   console.log('╚════════════════════════════════════════════════╝');
 
-  // 1. 验证配置
+  // 1. 清理旧的 Bridge 进程（防止重复启动）
+  try {
+    const { cleanupStaleProcesses } = await import('./utils/process-cleanup.js');
+    await cleanupStaleProcesses();
+  } catch (error) {
+    console.warn('[Index] 清理旧进程失败:', error);
+  }
+
+  // 2. 如果启用了 OpenCode 自动启动，先清理旧进程并启动
+  let opencodeChildProcess: import('node:child_process').ChildProcess | undefined;
+  if (opencodeConfig.autoStart) {
+    try {
+      const { cleanupOpenCodeProcesses } = await import('./utils/process-cleanup.js');
+      await cleanupOpenCodeProcesses();
+
+      const { spawn } = await import('node:child_process');
+      opencodeChildProcess = spawn(opencodeConfig.autoStartCmd, [], {
+        stdio: 'ignore',
+        detached: true,
+      });
+
+      opencodeChildProcess.on('error', (err) => {
+        console.error('[Index] OpenCode 子进程错误:', err);
+      });
+
+      opencodeChildProcess.on('exit', (code) => {
+        console.log(`[Index] OpenCode 子进程已退出，code=${code}`);
+      });
+
+      console.log(`[Index] OpenCode 已自动启动，PID=${opencodeChildProcess.pid}`);
+    } catch (error) {
+      console.warn('[Index] 启动 OpenCode 失败:', error);
+    }
+  }
+
+  // 3. 验证配置
   try {
     validateConfig();
   } catch (error) {
@@ -1768,35 +1803,51 @@ console.log('║   飞书 × OpenCode 桥接服务 v2.9.0 (Group)  ║');
 
     console.log(`\n[${signal}] 正在关闭服务...`);
 
-    // 停止 reliability 调度和救援资源
+    // 1. 优先终止 OpenCode 子进程（如果由 Bridge 启动）
+    if (opencodeChildProcess) {
+      try {
+        console.log('[Shutdown] 正在终止 OpenCode 子进程...');
+        opencodeChildProcess.kill('SIGTERM');
+        // 等待子进程退出
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        if (!opencodeChildProcess.killed) {
+          opencodeChildProcess.kill('SIGKILL');
+          console.log('[Shutdown] 已强制终止 OpenCode 子进程');
+        }
+      } catch (e) {
+        console.error('[Shutdown] 终止 OpenCode 子进程失败:', e);
+      }
+    }
+
+    // 2. 停止 reliability 调度和救援资源
     try {
       await reliabilityLifecycle.cleanup();
     } catch (e) {
       console.error('停止 reliability 资源失败:', e);
     }
 
-    // 停止 Discord 适配器
+    // 3. 停止 Discord 适配器
     try {
       discordAdapter.stop();
     } catch (e) {
       console.error('停止 Discord 适配器失败:', e);
     }
 
-    // 停止飞书连接
+    // 4. 停止飞书连接
     try {
       feishuClient.stop();
     } catch (e) {
       console.error('停止飞书连接失败:', e);
     }
 
-    // 断开 OpenCode 连接
+    // 5. 断开 OpenCode 连接
     try {
       opencodeClient.disconnect();
     } catch (e) {
       console.error('断开 OpenCode 失败:', e);
     }
 
-    // 清理所有缓冲区和定时器
+    // 6. 清理所有缓冲区和定时器
     try {
       outputBuffer.clearAll();
       delayedResponseHandler.cleanupExpired(0);

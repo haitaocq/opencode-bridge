@@ -171,6 +171,13 @@ export const opencodeConfig = {
   port: parseInt(process.env.OPENCODE_PORT || '4096', 10),
   serverUsername: process.env.OPENCODE_SERVER_USERNAME?.trim() || 'opencode',
   serverPassword: process.env.OPENCODE_SERVER_PASSWORD?.trim() || undefined,
+
+  // 是否自动启动 OpenCode 后台进程
+  autoStart: parseBooleanEnv(process.env.OPENCODE_AUTO_START, false),
+
+  // OpenCode 启动命令
+  autoStartCmd: process.env.OPENCODE_AUTO_START_CMD?.trim() || 'opencode',
+
   get baseUrl() {
     return `http://${this.host}:${this.port}`;
   },
