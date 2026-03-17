@@ -395,6 +395,8 @@ RELIABILITY_LOOPBACK_ONLY=true
 <a id="详细文档"></a>
 ## 📚 详细文档
 
+### 中文文档
+
 | 文档 | 说明 |
 |---|---|
 | [架构文档](assets/docs/architecture.md) | 项目分层设计与平台能力矩阵 |
@@ -407,6 +409,25 @@ RELIABILITY_LOOPBACK_ONLY=true
 | [部署运维](assets/docs/deployment.md) | 部署、升级与 systemd 配置 |
 | [Agent 使用](assets/docs/agent.md) | 角色配置与自定义 Agent |
 | [灰度部署](assets/docs/rollout.md) | 路由器模式灰度与回滚 SOP |
+| [SDK API](assets/docs/sdk-api.md) | OpenCode SDK 集成指南 |
+| [工作目录指南](assets/docs/workspace-guide.md) | 工作目录策略与项目配置 |
+
+### English Documentation
+
+| Document | Description |
+|---|---|
+| [Architecture](assets/docs/architecture-en.md) | Project layering and platform capabilities |
+| [Environment Variables](assets/docs/environment-en.md) | Complete environment configuration |
+| [Reliability](assets/docs/reliability-en.md) | Heartbeat, Cron, and crash rescue |
+| [Feishu Config](assets/docs/feishu-config-en.md) | Event subscriptions and permissions |
+| [Commands](assets/docs/commands-en.md) | Complete command reference |
+| [Implementation](assets/docs/implementation-en.md) | Key implementation details |
+| [Troubleshooting](assets/docs/troubleshooting-en.md) | Common issues and solutions |
+| [Deployment](assets/docs/deployment-en.md) | Deployment and systemd setup |
+| [Agent Guide](assets/docs/agent-en.md) | Role configuration and custom agents |
+| [Gray Deploy](assets/docs/rollout-en.md) | Gray deployment and rollback SOP |
+| [SDK API](assets/docs/sdk-api-en.md) | OpenCode SDK integration guide |
+| [Workspace Guide](assets/docs/workspace-guide-en.md) | Working directory strategy and project configuration |
 
 <a id="许可证"></a>
 ## 📝 许可证
