@@ -36,6 +36,8 @@
 | `/clear free session <sessionId>` / `/clear_free_session <sessionId>` | Delete specified OpenCode session, remove all local binding mappings and Cron bound to that session |
 | `/compact` | Call OpenCode summarize to compress current session context |
 | `!<shell command>` | Passthrough whitelisted shell commands (e.g., `!ls`, `!pwd`, `!mkdir`, `!git status`) |
+| `/commands` | Generate and send the latest command list file |
+| `//<command>` | Pass through a namespaced slash command (for example `//superpowers:brainstorming`) |
 | `/create_chat` / `/create-group` | Bring up group creation card in private chat (click "Create Group" after dropdown selection to take effect) |
 | `/send <absolute path>` | Send file from specified path to current group chat |
 | `/restart opencode` | Restart local OpenCode process (loopback only) |

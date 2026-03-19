@@ -345,6 +345,8 @@ See [Commands Document](assets/docs/commands-en.md).
 | `/undo` | Undo last interaction |
 | `/compact` | Compress context |
 | `!<shell command>` | Pass through shell command |
+| `/commands` | Generate and send the latest command list file |
+| `//<command>` | Pass through a namespaced slash command (for example `//superpowers:brainstorming`) |
 
 ### Discord Commands
 

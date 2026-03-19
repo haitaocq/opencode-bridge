@@ -36,6 +36,8 @@
 | `/clear free session <sessionId>` / `/clear_free_session <sessionId>` | 删除指定 OpenCode 会话，并移除所有本地绑定映射与该会话绑定的 Cron |
 | `/compact` | 调用 OpenCode summarize，压缩当前会话上下文 |
 | `!<shell 命令>` | 透传白名单 shell 命令（如 `!ls`、`!pwd`、`!mkdir`、`!git status`） |
+| `/commands` | 生成并发送最新命令清单文件 |
+| `//<命令名>` | 透传命名空间 slash 命令（如 `//superpowers:brainstorming`） |
 | `/create_chat` / `/建群` | 私聊中调出建群卡片（下拉选择后点击"创建群聊"生效） |
 | `/send <绝对路径>` | 发送指定路径的文件到当前群聊 |
 | `/restart opencode` | 重启本地 OpenCode 进程（仅 loopback） |
