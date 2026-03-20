@@ -90,10 +90,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { RefreshRight, DataAnalysis } from '@element-plus/icons-vue'
+import { RefreshRight, DataAnalysis, Loading } from '@element-plus/icons-vue'
 import { useConfigStore } from './stores/config'
 import type { ServiceStatus } from './api/index'
 
@@ -105,16 +105,25 @@ const restartDialogVisible = ref(false)
 const restarting = ref(false)
 const loginError = ref(false)
 
-onMounted(async () => {
+async function loadAppData() {
+  if (route.path === '/login' || !localStorage.getItem('admin_token')) return
   try {
-    await Promise.all([store.fetchConfig(), store.fetchStatus(), store.fetchCronJobs()])
+    await store.initializeAll()
     status.value = store.status
   } catch (e: any) {
     if (e.response?.status === 401) {
       loginError.value = true
-      localStorage.removeItem('admin_token')
       router.push('/login')
     }
+  }
+}
+
+onMounted(loadAppData)
+
+// 监听路由变化，登录成功后跳转到 Dashboard 时加载数据
+watch(() => route.path, (newPath, oldPath) => {
+  if (oldPath === '/login' && newPath !== '/login' && localStorage.getItem('admin_token')) {
+    loadAppData()
   }
 })
 

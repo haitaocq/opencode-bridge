@@ -183,17 +183,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import {
   Monitor, Timer, DataLine, Clock, ChatDotRound, Connection, Cpu, Warning, DataAnalysis
 } from '@element-plus/icons-vue'
 import { useConfigStore } from '../stores/config'
-import type { CronJob } from '../api/index'
 
 const store = useConfigStore()
-const status = ref(store.status)
-const jobs = ref<CronJob[]>([])
-const settings = ref(store.settings)
+
+// 直接使用 store 的响应式数据
+const status = computed(() => store.status)
+const jobs = computed(() => store.cronJobs)
+const settings = computed(() => store.settings)
 
 const dbStatus = computed(() => {
   if (!status.value?.dbPath) return '未知'
@@ -204,13 +205,6 @@ const dbStatus = computed(() => {
 const runningCount = computed(() => jobs.value.filter(j => j.enabled).length)
 const pausedCount = computed(() => jobs.value.filter(j => !j.enabled).length)
 const errorCount = computed(() => jobs.value.filter(j => !!j.state?.lastError).length)
-
-onMounted(async () => {
-  await Promise.all([store.fetchStatus(), store.fetchCronJobs(), store.fetchConfig()])
-  status.value = store.status
-  jobs.value = store.cronJobs
-  settings.value = store.settings
-})
 
 function formatUptime(seconds: number): string {
   if (seconds < 60) return `${seconds}秒`

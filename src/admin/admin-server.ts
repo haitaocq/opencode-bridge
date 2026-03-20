@@ -244,6 +244,70 @@ export function createAdminServer(options: AdminServerOptions): { start: () => v
     }, 1000);
   });
 
+  // ── GET /api/opencode/models
+  api.get('/opencode/models', async (_req, res) => {
+    try {
+      const { execSync } = await import('node:child_process');
+      const output = execSync('opencode models', { encoding: 'utf-8', timeout: 30000 });
+      const models = output
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0 && !line.startsWith('opencode/'));
+
+      // 按供应商分组
+      const grouped: Record<string, string[]> = {};
+      for (const model of models) {
+        const [provider, ...rest] = model.split('/');
+        const modelName = rest.join('/');
+        if (!grouped[provider]) grouped[provider] = [];
+        grouped[provider].push(modelName);
+      }
+      res.json({ models: grouped, raw: models });
+    } catch (error: any) {
+      console.error('[Admin] 获取模型列表失败:', error.message);
+      res.status(500).json({ error: '获取模型列表失败：' + error.message });
+    }
+  });
+
+  // ── GET /api/sessions
+  api.get('/sessions', async (_req, res) => {
+    try {
+      // 从 chat-session-store 读取当前活跃的会话
+      const { chatSessionStore } = await import('../store/chat-session.js');
+
+      // 获取飞书会话
+      const feishuChatIds = chatSessionStore.getChatIdsByPlatform?.('feishu') || [];
+      const feishuSessions = feishuChatIds.map((chatId: string) => {
+        const session = chatSessionStore.getSession?.(chatId);
+        return {
+          chatId,
+          title: session?.title || '未命名会话',
+          userId: session?.creatorId,
+        };
+      });
+
+      // 获取 Discord 会话（从 chatSessionStore 中获取 discord 平台的会话）
+      const discordChatIds = chatSessionStore.getChatIdsByPlatform?.('discord') || [];
+      const discordSessions = discordChatIds.map((chatId: string) => {
+        const session = chatSessionStore.getSession?.(chatId);
+        return {
+          conversationId: chatId,
+          title: session?.title || '未命名会话',
+          userId: session?.creatorId,
+        };
+      });
+
+      res.json({
+        feishu: feishuSessions,
+        discord: discordSessions,
+      });
+    } catch (error: any) {
+      console.error('[Admin] 获取会话列表失败:', error.message);
+      // 如果获取失败，返回空列表
+      res.json({ feishu: [], discord: [] });
+    }
+  });
+
   app.use('/api', api);
 
   // SPA fallback（所有非 /api 路由返回 index.html）

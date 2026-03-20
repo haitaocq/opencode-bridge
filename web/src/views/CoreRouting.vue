@@ -33,20 +33,9 @@
           </el-col>
         </el-row>
 
-        <el-row :gutter="24">
-          <el-col :span="12">
-            <el-form-item label="默认模型 Provider（DEFAULT_PROVIDER）">
-              <el-input v-model="form.DEFAULT_PROVIDER" placeholder="留空则由 OpenCode 决定" />
-              <div class="field-tip">需与 DEFAULT_MODEL 同时设置才生效，例如 anthropic</div>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="默认模型（DEFAULT_MODEL）">
-              <el-input v-model="form.DEFAULT_MODEL" placeholder="留空则由 OpenCode 决定" />
-              <div class="field-tip">需与 DEFAULT_PROVIDER 同时设置才生效，例如 claude-opus-4-5</div>
-            </el-form-item>
-          </el-col>
-        </el-row>
+        <el-alert type="info" :closable="false" show-icon style="margin-top: 12px">
+          💡 提示：默认模型配置请在 <el-button type="primary" link size="small" @click="$router.push('/opencode')">OpenCode 对接配置</el-button> 页面中设置
+        </el-alert>
       </el-card>
 
       <!-- 输出显示 -->
@@ -213,8 +202,6 @@ const gitRoot = ref(true)
 const form = reactive({
   ROUTER_MODE: 'legacy',
   ENABLE_MANUAL_SESSION_BIND: 'true',
-  DEFAULT_PROVIDER: '',
-  DEFAULT_MODEL: '',
   SHOW_THINKING_CHAIN: 'true',
   SHOW_TOOL_CHAIN: 'true',
   FEISHU_SHOW_THINKING_CHAIN: '',
@@ -240,8 +227,6 @@ function syncFromStore() {
   Object.assign(form, {
     ROUTER_MODE: s.ROUTER_MODE || 'legacy',
     ENABLE_MANUAL_SESSION_BIND: s.ENABLE_MANUAL_SESSION_BIND ?? 'true',
-    DEFAULT_PROVIDER: s.DEFAULT_PROVIDER || '',
-    DEFAULT_MODEL: s.DEFAULT_MODEL || '',
     SHOW_THINKING_CHAIN: s.SHOW_THINKING_CHAIN ?? 'true',
     SHOW_TOOL_CHAIN: s.SHOW_TOOL_CHAIN ?? 'true',
     FEISHU_SHOW_THINKING_CHAIN: s.FEISHU_SHOW_THINKING_CHAIN || '',

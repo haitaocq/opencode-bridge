@@ -21,7 +21,7 @@ router.beforeEach((to, _from, next) => {
   const token = localStorage.getItem('admin_token')
   if (to.path === '/login') {
     if (token) {
-      next('/platforms')
+      next('/dashboard')
     } else {
       next()
     }

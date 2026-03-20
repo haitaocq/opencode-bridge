@@ -79,7 +79,7 @@ async function handleLogin() {
     // 登录成功，保存 token
     localStorage.setItem('admin_token', form.password)
     ElMessage.success('登录成功')
-    router.push('/platforms')
+    router.push('/dashboard')
   } catch (e: any) {
     if (e.response?.status === 401) {
       error.value = '密码错误，请重试'

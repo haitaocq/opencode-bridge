@@ -78,6 +78,33 @@
         </el-row>
       </el-card>
 
+      <el-card class="config-card">
+        <template #header><span class="card-title">🤖 默认模型配置</span></template>
+        <el-alert type="info" :closable="false" show-icon style="margin-bottom:16px">
+          配置默认使用的 AI 模型供应商和模型名称（不启用路由模式时生效）
+        </el-alert>
+        <el-row :gutter="24">
+          <el-col :span="12">
+            <el-form-item label="供应商（DEFAULT_PROVIDER）">
+              <el-select v-model="selectedProvider" placeholder="请选择供应商" filterable style="width:100%"
+                @change="handleProviderChange">
+                <el-option v-for="p in providers" :key="p.name" :label="p.name" :value="p.name" />
+              </el-select>
+              <div class="field-tip">选择模型供应商</div>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="模型名称（DEFAULT_MODEL）">
+              <el-select v-model="form.DEFAULT_MODEL" placeholder="请选择模型" filterable style="width:100%"
+                :disabled="!selectedProvider">
+                <el-option v-for="m in currentModels" :key="m" :label="m" :value="m" />
+              </el-select>
+              <div class="field-tip">选择要使用的具体模型</div>
+            </el-form-item>
+          </el-col>
+        </el-row>
+      </el-card>
+
       <div class="form-actions">
         <el-button type="primary" :loading="saving" @click="handleSave" size="large">保存配置</el-button>
       </div>
@@ -86,7 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useConfigStore } from '../stores/config'
 
@@ -94,6 +121,11 @@ const store = useConfigStore()
 const saving = ref(false)
 const autoStart = ref(false)
 const portNum = ref(4096)
+const selectedProvider = ref('')
+const currentModels = ref<string[]>([])
+
+// 从 store 获取模型列表（启动时已加载）
+const providers = computed(() => store.modelProviders)
 
 const form = reactive({
   OPENCODE_HOST: 'localhost',
@@ -103,10 +135,33 @@ const form = reactive({
   OPENCODE_SERVER_USERNAME: 'opencode',
   OPENCODE_SERVER_PASSWORD: '',
   OPENCODE_CONFIG_FILE: '',
+  DEFAULT_PROVIDER: '',
+  DEFAULT_MODEL: '',
 })
 
-onMounted(() => syncFromStore())
+onMounted(() => {
+  syncFromStore()
+  initModelSelection()
+})
+
 watch(() => store.settings, () => syncFromStore(), { deep: true })
+
+function initModelSelection() {
+  // 如果已有配置的供应商，选中它
+  if (form.DEFAULT_PROVIDER && providers.value.some(p => p.name === form.DEFAULT_PROVIDER)) {
+    selectedProvider.value = form.DEFAULT_PROVIDER
+    currentModels.value = providers.value.find(p => p.name === form.DEFAULT_PROVIDER)?.models || []
+  }
+}
+
+function handleProviderChange() {
+  const provider = providers.value.find(p => p.name === selectedProvider.value)
+  if (provider) {
+    currentModels.value = provider.models
+    form.DEFAULT_PROVIDER = selectedProvider.value
+    form.DEFAULT_MODEL = '' // 清空模型选择
+  }
+}
 
 function syncFromStore() {
   const s = store.settings
@@ -118,13 +173,17 @@ function syncFromStore() {
     OPENCODE_SERVER_USERNAME: s.OPENCODE_SERVER_USERNAME || 'opencode',
     OPENCODE_SERVER_PASSWORD: s.OPENCODE_SERVER_PASSWORD || '',
     OPENCODE_CONFIG_FILE: s.OPENCODE_CONFIG_FILE || '',
+    DEFAULT_PROVIDER: s.DEFAULT_PROVIDER || '',
+    DEFAULT_MODEL: s.DEFAULT_MODEL || '',
   })
   portNum.value = parseInt(form.OPENCODE_PORT) || 4096
   autoStart.value = form.OPENCODE_AUTO_START === 'true'
+  initModelSelection()
 }
 
 async function handleSave() {
   form.OPENCODE_PORT = String(portNum.value)
+  form.DEFAULT_PROVIDER = selectedProvider.value
   saving.value = true
   try {
     const result = await store.saveConfig({ ...form })

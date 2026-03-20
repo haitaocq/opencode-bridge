@@ -122,9 +122,13 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="用户白名单（ALLOWED_USERS）">
-              <el-input v-model="form.ALLOWED_USERS" placeholder="ou_xxx,ou_yyy（留空=不限制）"
-                type="textarea" :rows="2" />
-              <div class="field-tip">飞书 open_id 列表，逗号分隔。留空则不启用白名单保护</div>
+              <el-select v-model="allowedUsers" multiple placeholder="选择允许的用户" filterable
+                style="width:100%" @change="onAllowedUsersChange">
+                <el-option-group v-for="group in sessionGroups" :key="group.label" :label="group.label">
+                  <el-option v-for="item in group.options" :key="item.value" :label="item.label" :value="item.value" />
+                </el-option-group>
+              </el-select>
+              <div class="field-tip">从当前活跃会话中选择允许的用户，也可手动输入 open_id</div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -151,7 +155,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useConfigStore } from '../stores/config'
 
@@ -160,6 +164,39 @@ const saving = ref(false)
 const discordEnabled = ref(false)
 const groupRequireMention = ref(false)
 const enabledPlatforms = ref<string[]>([])
+const allowedUsers = ref<string[]>([])
+
+// 从 store 获取会话数据（启动时已加载）
+const sessions = computed(() => {
+  const list = store.sessions
+  return {
+    feishu: list.filter(s => s.platform === 'feishu'),
+    discord: list.filter(s => s.platform === 'discord'),
+  }
+})
+
+const sessionGroups = computed(() => {
+  const groups: Array<{ label: string; options: Array<{ label: string; value: string }> }> = []
+  if (sessions.value.feishu.length > 0) {
+    groups.push({
+      label: '飞书会话',
+      options: sessions.value.feishu.map(s => ({
+        label: `${s.title} (${s.chatId})`,
+        value: s.chatId || '',
+      })),
+    })
+  }
+  if (sessions.value.discord.length > 0) {
+    groups.push({
+      label: 'Discord 频道',
+      options: sessions.value.discord.map(s => ({
+        label: `${s.title} (${s.conversationId})`,
+        value: s.conversationId || '',
+      })),
+    })
+  }
+  return groups
+})
 
 const form = reactive({
   FEISHU_APP_ID: '',
@@ -201,10 +238,17 @@ function syncFromStore() {
   enabledPlatforms.value = form.ENABLED_PLATFORMS
     ? form.ENABLED_PLATFORMS.split(',').map(s => s.trim()).filter(Boolean)
     : []
+  allowedUsers.value = form.ALLOWED_USERS
+    ? form.ALLOWED_USERS.split(',').map(s => s.trim()).filter(Boolean)
+    : []
 }
 
 function onPlatformsChange(val: string[]) {
   form.ENABLED_PLATFORMS = val.join(',')
+}
+
+function onAllowedUsersChange(val: string[]) {
+  form.ALLOWED_USERS = val.join(',')
 }
 
 async function handleSave() {

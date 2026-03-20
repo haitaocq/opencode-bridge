@@ -1,12 +1,15 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { configApi, type BridgeSettings, type CronJob, type ServiceStatus, type CreateCronJobInput } from '../api/index'
+import { configApi, type BridgeSettings, type CronJob, type ServiceStatus, type CreateCronJobInput, type SessionInfo, type ModelProvider } from '../api/index'
 
 export const useConfigStore = defineStore('config', () => {
   const settings = ref<BridgeSettings>({})
   const cronJobs = ref<CronJob[]>([])
   const status = ref<ServiceStatus | null>(null)
+  const sessions = ref<SessionInfo[]>([])
+  const modelProviders = ref<ModelProvider[]>([])
   const loading = ref(false)
+  const initialized = ref(false)
   const pendingRestart = ref(false)
   const pendingRestartKeys = ref<string[]>([])
 
@@ -56,6 +59,32 @@ export const useConfigStore = defineStore('config', () => {
     status.value = await configApi.getStatus()
   }
 
+  async function fetchSessions() {
+    sessions.value = await configApi.getSessions()
+  }
+
+  async function fetchModels() {
+    const data = await configApi.getModels()
+    modelProviders.value = data.providers
+  }
+
+  async function initializeAll() {
+    if (initialized.value) return
+    loading.value = true
+    try {
+      await Promise.all([
+        fetchConfig(),
+        fetchStatus(),
+        fetchCronJobs(),
+        fetchSessions(),
+        fetchModels(),
+      ])
+      initialized.value = true
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function restart() {
     await configApi.restart()
     pendingRestart.value = false
@@ -63,11 +92,13 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   return {
-    settings, cronJobs, status, loading,
+    settings, cronJobs, status, sessions, modelProviders,
+    loading, initialized,
     pendingRestart, pendingRestartKeys,
     cronJobCount, runningJobCount,
     fetchConfig, saveConfig,
     fetchCronJobs, toggleCronJob, deleteCronJob, createCronJob,
-    fetchStatus, restart,
+    fetchStatus, fetchSessions, fetchModels,
+    initializeAll, restart,
   }
 })

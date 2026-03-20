@@ -8,7 +8,7 @@
         </div>
         <div class="header-actions">
           <el-button :icon="Plus" type="primary" @click="showCreateDialog = true">新建任务</el-button>
-          <el-button :icon="Refresh" @click="loadJobs" :loading="loading">刷新</el-button>
+          <el-button :icon="Refresh" @click="handleRefresh" :loading="refreshing">刷新</el-button>
         </div>
       </div>
     </div>
@@ -17,7 +17,7 @@
     <el-row :gutter="16" class="stat-row">
       <el-col :span="6">
         <el-card shadow="never" class="stat-card">
-          <div class="stat-num">{{ jobs.length }}</div>
+          <div class="stat-num">{{ store.cronJobs.length }}</div>
           <div class="stat-label">全部任务</div>
         </el-card>
       </el-col>
@@ -43,7 +43,7 @@
 
     <!-- 任务列表 -->
     <el-card class="config-card">
-      <el-table :data="jobs" stripe v-loading="loading" empty-text="暂无运行时 Cron 任务">
+      <el-table :data="store.cronJobs" stripe v-loading="!store.initialized" empty-text="暂无运行时 Cron 任务">
 
         <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
@@ -128,13 +128,11 @@
     </el-card>
 
     <!-- 空状态说明 -->
-    <el-card v-if="jobs.length === 0 && !loading" class="config-card empty-hint">
+    <el-card v-if="store.cronJobs.length === 0 && store.initialized" class="config-card empty-hint">
       <el-empty description="暂无运行时 Cron 任务">
         <template #description>
           <p>运行时 Cron 任务由用户在对话中通过命令创建（如 <code>/cron add "0 9 * * 1-5" 每天早 9 点提醒</code>）</p>
-          <p style="margin-top:8px">或者点击右上角的「新建任务」按钮手动创建</p>
         </template>
-        <el-button type="primary" @click="showCreateDialog = true">新建任务</el-button>
       </el-empty>
     </el-card>
 
@@ -150,13 +148,15 @@
           <div class="field-tip">标准 Cron 表达式，例如：每 30 分钟=*/30 * * * *，每天 9 点=0 9 * * *</div>
         </el-form-item>
         <el-form-item label="平台" required>
-          <el-select v-model="createForm.platform" style="width:100%">
+          <el-select v-model="createForm.platform" style="width:100%" @change="onPlatformChange">
             <el-option value="feishu" label="飞书 (Feishu)" />
             <el-option value="discord" label="Discord" />
           </el-select>
         </el-form-item>
         <el-form-item label="会话 ID" required>
-          <el-input v-model="createForm.conversationId" placeholder="oc_xxx (飞书) 或频道 ID (Discord)" />
+          <el-select v-model="createForm.conversationId" placeholder="请选择会话" filterable style="width:100%">
+            <el-option v-for="s in currentSessionOptions" :key="s.value" :label="s.label" :value="s.value" />
+          </el-select>
           <div class="field-tip">任务触发时消息发送的目标会话 ID</div>
         </el-form-item>
         <el-form-item label="提示词（可选）">
@@ -181,12 +181,11 @@ import { useConfigStore } from '../stores/config'
 import type { CronJob, CreateCronJobInput } from '../api/index'
 
 const store = useConfigStore()
-const loading = ref(false)
+const refreshing = ref(false)
 const toggling = ref<string | null>(null)
 const deleting = ref<string | null>(null)
 const creating = ref(false)
 const showCreateDialog = ref(false)
-const jobs = ref<CronJob[]>([])
 
 const createForm = ref<CreateCronJobInput>({
   cronExpression: '',
@@ -196,35 +195,56 @@ const createForm = ref<CreateCronJobInput>({
   prompt: '',
 })
 
-const runningCount = computed(() => jobs.value.filter(j => j.enabled).length)
-const pausedCount = computed(() => jobs.value.filter(j => !j.enabled).length)
-const errorCount = computed(() => jobs.value.filter(j => !!j.state?.lastError).length)
+// 从 store 获取会话数据
+const sessions = computed(() => {
+  const list = store.sessions
+  return {
+    feishu: list.filter(s => s.platform === 'feishu'),
+    discord: list.filter(s => s.platform === 'discord'),
+  }
+})
+
+const currentSessionOptions = computed(() => {
+  const platformSessions = createForm.value.platform === 'feishu' ? sessions.value.feishu : sessions.value.discord
+  return platformSessions.map(s => ({
+    label: `${s.title} (${s.chatId || s.conversationId})`,
+    value: (s.chatId || s.conversationId) || '',
+  }))
+})
+
+const runningCount = computed(() => store.cronJobs.filter(j => j.enabled).length)
+const pausedCount = computed(() => store.cronJobs.filter(j => !j.enabled).length)
+const errorCount = computed(() => store.cronJobs.filter(j => !!j.state?.lastError).length)
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
-onMounted(async () => {
-  await loadJobs()
-  refreshTimer = setInterval(loadJobs, 30000)
+onMounted(() => {
+  // 30秒自动刷新任务状态
+  refreshTimer = setInterval(() => store.fetchCronJobs(), 30000)
 })
 
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
 })
 
-async function loadJobs() {
-  loading.value = true
+async function handleRefresh() {
+  refreshing.value = true
   try {
-    jobs.value = await store.fetchCronJobs().then(() => store.cronJobs)
+    await store.fetchCronJobs()
+    ElMessage.success('刷新成功')
   } finally {
-    loading.value = false
+    refreshing.value = false
   }
+}
+
+function onPlatformChange() {
+  createForm.value.conversationId = ''
 }
 
 async function handleToggle(row: CronJob) {
   toggling.value = row.id
   try {
     await store.toggleCronJob(row.id)
-    jobs.value = store.cronJobs
     ElMessage.success(row.enabled ? '任务已暂停' : '任务已恢复')
   } catch {
     ElMessage.error('操作失败')
@@ -241,7 +261,6 @@ async function handleDelete(row: CronJob) {
   deleting.value = row.id
   try {
     await store.deleteCronJob(row.id)
-    jobs.value = store.cronJobs
     ElMessage.success('任务已删除')
   } catch {
     ElMessage.error('删除失败')
@@ -260,7 +279,6 @@ async function handleCreate() {
     await store.createCronJob(createForm.value)
     ElMessage.success('任务创建成功')
     showCreateDialog.value = false
-    jobs.value = store.cronJobs
     createForm.value = { cronExpression: '', platform: 'feishu', conversationId: '', name: '', prompt: '' }
   } catch (e: any) {
     ElMessage.error(e.response?.data?.error || '创建失败')

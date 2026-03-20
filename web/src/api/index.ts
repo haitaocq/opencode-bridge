@@ -107,6 +107,18 @@ export interface CreateCronJobInput {
   prompt?: string
 }
 
+export interface ModelProvider {
+  name: string
+  models: string[]
+}
+
+export interface SessionInfo {
+  chatId?: string
+  conversationId?: string
+  title: string
+  userId?: string
+}
+
 export const configApi = {
   async getConfig(): Promise<BridgeSettings> {
     const res = await http.get<{ settings: BridgeSettings }>('/config')
@@ -144,5 +156,19 @@ export const configApi = {
 
   async restart(): Promise<void> {
     await http.post('/admin/restart')
+  },
+
+  async getModels(): Promise<{ providers: ModelProvider[]; raw: string[] }> {
+    const res = await http.get<{ models: Record<string, string[]>; raw: string[] }>('/opencode/models')
+    const providers: ModelProvider[] = Object.entries(res.data.models).map(([name, models]) => ({
+      name,
+      models,
+    }))
+    return { providers, raw: res.data.raw }
+  },
+
+  async getSessions(): Promise<{ feishu: SessionInfo[]; discord: SessionInfo[] }> {
+    const res = await http.get<{ feishu: SessionInfo[]; discord: SessionInfo[] }>('/sessions')
+    return res.data
   },
 }
