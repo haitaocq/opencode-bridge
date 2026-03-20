@@ -38,15 +38,25 @@
 
       <div class="login-tip">
         <el-text size="small" type="info">
-          密码存储在 .env 文件的 ADMIN_PASSWORD 配置项中
+          首次登录使用 .env 中的 ADMIN_PASSWORD，之后使用您设置的密码
         </el-text>
+        <el-button
+          v-if="hasOldToken"
+          size="small"
+          type="warning"
+          text
+          @click="clearOldToken"
+          style="margin-left: 8px"
+        >
+          清除旧登录缓存
+        </el-button>
       </div>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Monitor } from '@element-plus/icons-vue'
@@ -59,6 +69,8 @@ const error = ref('')
 const form = reactive({
   password: '',
 })
+
+const hasOldToken = computed(() => !!localStorage.getItem('admin_token'))
 
 async function handleLogin() {
   if (!form.password.trim()) {
@@ -89,6 +101,11 @@ async function handleLogin() {
   } finally {
     loggingIn.value = false
   }
+}
+
+function clearOldToken() {
+  localStorage.removeItem('admin_token')
+  ElMessage.success('已清除旧登录缓存，请重新登录')
 }
 </script>
 

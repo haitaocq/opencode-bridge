@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { P2PHandler } from '../src/handlers/p2p.js';
 import { opencodeClient } from '../src/opencode/client.js';
 import { directoryConfig, userConfig } from '../src/config.js';
+import { chatSessionStore } from '../src/store/chat-session.js';
 import type { CreateChatCardData } from '../src/feishu/cards.js';
 
 type InternalP2PHandler = {
@@ -13,17 +14,20 @@ describe('P2P create_chat 工作项目来源', () => {
   let originalAllowedDirectories: string[];
   let originalDefaultWorkDirectory: string | undefined;
   let originalEnableManualSessionBind: boolean;
+  let originalProjectAliases: Record<string, string>;
 
   beforeEach(() => {
     originalAllowedDirectories = [...directoryConfig.allowedDirectories];
     originalDefaultWorkDirectory = directoryConfig.defaultWorkDirectory;
     originalEnableManualSessionBind = userConfig.enableManualSessionBind;
+    originalProjectAliases = { ...directoryConfig.projectAliases };
   });
 
   afterEach(() => {
     directoryConfig.allowedDirectories = [...originalAllowedDirectories];
     directoryConfig.defaultWorkDirectory = originalDefaultWorkDirectory;
     userConfig.enableManualSessionBind = originalEnableManualSessionBind;
+    directoryConfig.projectAliases = { ...originalProjectAliases };
     vi.restoreAllMocks();
   });
 
@@ -32,9 +36,18 @@ describe('P2P create_chat 工作项目来源', () => {
     const cwd = path.resolve(process.cwd());
     const parent = path.dirname(cwd);
 
+    // 设置允许目录
     directoryConfig.allowedDirectories = [cwd, parent];
     directoryConfig.defaultWorkDirectory = parent;
     userConfig.enableManualSessionBind = false;
+    // 设置项目别名来确保目录出现在选项中
+    directoryConfig.projectAliases = {
+      '当前目录': cwd,
+      '父目录': parent,
+    };
+
+    // Mock chatSessionStore.getKnownDirectories 返回这些目录
+    vi.spyOn(chatSessionStore, 'getKnownDirectories').mockReturnValue([cwd, parent]);
 
     const data = await (handler as unknown as InternalP2PHandler).buildCreateChatCardData();
     const directories = new Set((data.projectOptions || []).map(item => item.directory));
@@ -64,6 +77,7 @@ describe('P2P create_chat 工作项目来源', () => {
     } as unknown as Awaited<ReturnType<typeof opencodeClient.listSessionsAcrossProjects>>[number];
 
     vi.spyOn(opencodeClient, 'listSessionsAcrossProjects').mockResolvedValue([opencodeSession]);
+    vi.spyOn(chatSessionStore, 'getKnownDirectories').mockReturnValue([]);
 
     const data = await (handler as unknown as InternalP2PHandler).buildCreateChatCardData();
     const directories = new Set((data.projectOptions || []).map(item => item.directory));

@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { initLogger } from './utils/logger.js';
+import { logStore } from './store/log-store.js';
 import { createAdminServer } from './admin/admin-server.js';
 import { feishuClient, type FeishuMessageEvent } from './feishu/client.js';
 import { feishuAdapter } from './platform/adapters/feishu-adapter.js';
@@ -494,6 +496,8 @@ export const bootstrapReliabilityLifecycle = (
 };
 
 async function main() {
+  // 初始化日志收集器（最早执行，捕获所有后续日志）
+  initLogger(logStore);
 
   console.log('╔════════════════════════════════════════════════╗');
   console.log('║   飞书 × OpenCode 桥接服务 v2.9.2-beta-pr1 ║');
@@ -1646,17 +1650,19 @@ async function main() {
   // 3.5 初始化 Reliability 生命周期（heartbeat + scheduler + rescue orchestrator）
   const reliabilityLifecycle = bootstrapReliabilityLifecycle();
 
-  // 3.6 启动可视化配置面板（外挂式，不影响主服务）
-  const adminPort = parseInt(process.env.ADMIN_PORT ?? '4098', 10);
-  const adminPassword = process.env.ADMIN_PASSWORD ?? '';
-  const adminServer = createAdminServer({
-    port: adminPort,
-    password: adminPassword,
-    cronManager: getRuntimeCronManager() ?? undefined,
-    startedAt: new Date(),
-    version: '2.9.2-beta-pr1',
-  });
-  adminServer.start();
+  // 3.6 启动可视化配置面板（仅在独立运行时启动，被 Admin spawn 时不启动）
+  if (!process.env.BRIDGE_SPAWNED_BY_ADMIN) {
+    const adminPort = parseInt(process.env.ADMIN_PORT ?? '4098', 10);
+    const adminPassword = process.env.ADMIN_PASSWORD ?? '';
+    const adminServer = createAdminServer({
+      port: adminPort,
+      password: adminPassword,
+      cronManager: getRuntimeCronManager() ?? undefined,
+      startedAt: new Date(),
+      version: '2.9.2-beta-pr1',
+    });
+    adminServer.start();
+  }
 
   // 4. 监听飞书消息（通过路由器分发）
   feishuClient.on('message', async (event) => {

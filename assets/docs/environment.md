@@ -1,4 +1,36 @@
-# 环境变量配置
+# 配置中心说明
+
+> **v2.9.2-beta 架构变更**：业务配置参数已迁移至 SQLite 数据库存储，通过 Web 可视化面板管理。`.env` 文件仅用于存储 Admin 面板的启动参数，不再作为业务配置文件使用。
+
+## 配置管理方式
+
+### 方式一：Web 可视化面板（推荐）
+
+服务启动后，访问 `http://localhost:4098` 进入配置面板：
+
+- 实时修改所有配置参数
+- 管理 Cron 定时任务
+- 查看服务运行状态
+- 敏感字段自动脱敏显示
+
+### 方式二：SQLite 数据库
+
+配置存储在 `data/config.db` 数据库中，可通过数据库工具直接查看或修改。
+
+### 方式三：.env 文件（仅启动参数）
+
+`.env` 文件现在只存储 Admin 面板的启动参数：
+
+| 变量 | 必填 | 默认值 | 说明 |
+|---|---|---|---|
+| `ADMIN_PORT` | 否 | `4098` | Web 配置面板监听端口 |
+| `ADMIN_PASSWORD` | 否 | 自动生成 | Web 配置面板访问密码 |
+
+---
+
+## 业务配置参数
+
+以下参数通过 Web 面板配置，或首次启动时从 `.env` 自动迁移至数据库：
 
 以 `src/config.ts` 与 `src/index.ts` 实际读取为准：
 
@@ -93,7 +125,7 @@
 
 | 变量 | 必填 | 默认值 | 说明 |
 |---|---|---|---|
-| `RELIABILITY_FAILURE_THRESHOLD` | 否 | `3` | 无限重连场景下，触发自动救援所需的连续失败次数 |
+| `RELIABILITY_FAILURE_THRESHOLD` | 否 | `3` | 无限重连场景下，触发触发自动救援所需的连续失败次数 |
 | `RELIABILITY_WINDOW_MS` | 否 | `90000` | 无限重连场景下，失败统计窗口（毫秒） |
 | `RELIABILITY_COOLDOWN_MS` | 否 | `300000` | 两次自动救援之间的冷却时间（毫秒） |
 | `RELIABILITY_REPAIR_BUDGET` | 否 | `3` | 自动救援预算（耗尽后转人工介入） |
@@ -127,3 +159,43 @@
 - JSON 格式映射短名到绝对路径，如 `{"frontend":"/home/user/frontend"}`。
 - 用户可通过 `/session new frontend` 使用别名创建会话，无需记忆完整路径。
 - 别名路径同样受 `ALLOWED_DIRECTORIES` 约束。
+
+---
+
+## 配置迁移说明
+
+### 首次启动迁移
+
+v2.9.2-beta 首次启动时，系统会自动执行：
+
+1. 检测 `.env` 文件中的业务配置
+2. 将配置写入 SQLite 数据库（`data/config.db`）
+3. 标记迁移完成
+4. 原 `.env` 备份为 `.env.backup`
+
+### 配置生效规则
+
+| 配置类型 | 修改后生效方式 |
+|---|---|
+| 显示控制（SHOW_*） | 立即生效 |
+| 白名单（ALLOWED_*） | 立即生效 |
+| 飞书配置（FEISHU_*） | 需重启服务 |
+| Discord 配置（DISCORD_*） | 需重启服务 |
+| OpenCode 连接（OPENCODE_HOST/PORT） | 需重启服务 |
+| 可靠性开关（RELIABILITY_*） | 需重启服务 |
+
+### Web 面板 API
+
+配置面板提供以下 API 接口：
+
+| 接口 | 方法 | 说明 |
+|---|---|---|
+| `/api/config` | GET | 获取当前配置（敏感字段脱敏） |
+| `/api/config` | POST | 保存配置 |
+| `/api/cron` | GET | 列出所有 Cron 任务 |
+| `/api/cron/create` | POST | 创建 Cron 任务 |
+| `/api/cron/:id/toggle` | POST | 启用/禁用任务 |
+| `/api/cron/:id` | DELETE | 删除任务 |
+| `/api/admin/status` | GET | 获取服务状态 |
+| `/api/admin/restart` | POST | 重启服务 |
+| `/api/opencode/models` | GET | 获取 OpenCode 可用模型 |

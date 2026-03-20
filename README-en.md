@@ -1,6 +1,6 @@
 # Feishu / Discord × OpenCode Bridge Service v2.9.2-beta-pr1
 
-[![v2.9.1](https://img.shields.io/badge/v2.9.1-3178C6)]()
+[![v2.9.2-beta](https://img.shields.io/badge/v2.9.2--beta-3178C6)]()
 [![Node.js >= 18](https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
@@ -10,6 +10,8 @@
 ---
 
 A cross-platform bridge layer that serves both Feishu and Discord. `v2.9.1` refactors the core from "single-file logic stack" to "platform adapter layer + root router + OpenCode event hub + domain processors", focusing on cross-platform scalability, permission loop stability, directory instance consistency, and production maintainability.
+
+**v2.9.2-beta New Feature: Web Visual Configuration Center** - Configuration parameters migrated from `.env` to SQLite database, supporting real-time configuration modification, Cron task management, and service status viewing through browser, no need to manually edit configuration files.
 
 With runtime Cron (API + `/cron` + `///cron` + natural language parsing) and local reliability governance, this project further closes the capability gap with OpenClaw in "automated scheduling + ops availability", while maintaining advantages in multi-platform routing and permission loop engineering.
 
@@ -22,7 +24,7 @@ With runtime Cron (API + `/cron` + `///cron` + natural language parsing) and loc
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
 - [Deployment & Ops](#deployment--ops)
-- [Environment Variables](#environment-variables)
+- [Configuration Center](#configuration-center)
 - [Reliability Features](#reliability-features)
 - [Feishu Configuration](#feishu-configuration)
 - [Commands](#commands)
@@ -71,6 +73,7 @@ This project solves not "can it reply to messages" but "can cross-platform AI ta
 | Working directory/project management | Specify working directory when creating session, with project aliases, group defaults, 9-stage security validation | `/project list`, `/session new <alias>`, `ALLOWED_DIRECTORIES` |
 | OpenCode local reliability governance | Runtime Cron (API/command/natural language) + local crash auto-rescue (with config backup/2-level fallback) + optional proactive heartbeat | `HEARTBEAT.md`, `RELIABILITY_*`, `logs/reliability-audit.jsonl` |
 | Deployment/ops closure | Integrated entry point for deploy/upgrade/check/background/systemd | `scripts/deploy.*`, `scripts/start.*` |
+| Web Visual Configuration Center | Browser-accessible configuration panel for real-time parameter modification, Cron task management, service status viewing, configuration stored in SQLite | `ADMIN_PORT`, `ADMIN_PASSWORD`, access `http://host:4098` |
 
 <a id="demo"></a>
 ## 🖼️ Demo
@@ -180,15 +183,33 @@ This command automatically:
 - Detects OpenCode installation and port status
 - Can install OpenCode with one click (`npm i -g opencode-ai`)
 - Installs project dependencies and compiles the bridge service
-- If `.env` doesn't exist, automatically copies from `.env.example` (won't overwrite existing `.env`)
-- Can input `FEISHU_APP_ID` / `FEISHU_APP_SECRET` directly in interactive phase (with undo/skip support)
+- If `.env` doesn't exist, automatically generates configuration file with `ADMIN_PORT` and `ADMIN_PASSWORD`
 
 **Note**:
 - Running without `guide` suffix opens the menu.
 - This command completes "deployment and environment preparation".
-- Feishu credentials must be filled by you; the script won't write real credentials; service cannot receive Feishu messages without them.
+- After starting the service, access `http://localhost:4098` in browser to enter the visual configuration panel.
 
-### 2) Fill in Feishu configuration (required, skip if done in previous step)
+### 2) Web Configuration Panel (Recommended)
+
+After the service starts, open browser and visit:
+```
+http://localhost:4098
+```
+
+Complete in the Web configuration panel:
+- Feishu application configuration (`FEISHU_APP_ID`, `FEISHU_APP_SECRET`)
+- OpenCode connection configuration
+- Discord adapter configuration
+- Reliability parameter configuration
+- Cron task management
+- Service status viewing
+
+**First Access**: The password is in the `ADMIN_PASSWORD` field of `.env` file, a random password is automatically generated on first startup.
+
+### 3) Fallback: Manual Configuration (Traditional Method)
+
+For manual configuration, edit the `.env` file:
 
 ```bash
 cp .env.example .env
@@ -198,13 +219,13 @@ At minimum fill in:
 - `FEISHU_APP_ID`
 - `FEISHU_APP_SECRET`
 
-### 3) Start OpenCode (keep CLI interface)
+### 4) Start OpenCode (keep CLI interface)
 
 ```bash
 opencode
 ```
 
-### 4) Start the bridge service
+### 5) Start the bridge service
 
 Linux/macOS:
 
@@ -224,7 +245,9 @@ For development debugging:
 npm run dev
 ```
 
-### 5) npm CLI installation (better for local continuous running scenarios)
+After startup, visit `http://localhost:4098` to access the Web configuration panel.
+
+### 6) npm CLI installation (better for local continuous running scenarios)
 
 ```bash
 npm install -g opencode-bridge
@@ -252,10 +275,32 @@ Detailed configuration see [Deployment & Ops Document](assets/docs/deployment-en
 
 Detailed deployment instructions see [Deployment & Ops Document](assets/docs/deployment-en.md).
 
-<a id="environment-variables"></a>
-## ⚙️ Environment Variables
+<a id="configuration-center"></a>
+## ⚙️ Configuration Center
 
-Core configuration:
+### Web Configuration Panel (Recommended)
+
+After service startup, visit `http://localhost:4098` visual configuration panel:
+
+- **Real-time Configuration**: Parameters take effect immediately after modification (some sensitive configurations require restart)
+- **Cron Management**: Create, enable/disable, delete scheduled tasks
+- **Service Status**: View uptime, version, database path, etc.
+- **Model List**: Get available model list from OpenCode
+
+### .env File (Startup Parameters Only)
+
+The `.env` file now only stores Admin panel startup parameters:
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `ADMIN_PORT` | No | `4098` | Web configuration panel listen port |
+| `ADMIN_PASSWORD` | No | Auto-generated | Web configuration panel access password |
+
+**Note**: `.env` is no longer used as business configuration file; business configurations are stored in SQLite database.
+
+### Core Business Configuration
+
+The following configurations are managed through Web panel or SQLite database:
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
@@ -266,7 +311,17 @@ Core configuration:
 | `DISCORD_ENABLED` | No | `false` | Enable Discord adapter |
 | `DISCORD_TOKEN` | No | - | Discord Bot Token |
 
-Full configuration see [Environment Variables Document](assets/docs/environment-en.md).
+Full configuration see [Configuration Center Document](assets/docs/environment-en.md).
+
+### Configuration Storage Notes
+
+**Configuration Migration**: On first startup, the system automatically migrates business configurations from `.env` to SQLite database (`data/config.db`), original `.env` is backed up to `.env.backup`.
+
+**Sensitive Configuration Restart**: The following configuration changes require service restart to take effect:
+- Feishu configuration (`FEISHU_APP_ID`, `FEISHU_APP_SECRET`)
+- Discord configuration (`DISCORD_ENABLED`, `DISCORD_TOKEN`)
+- OpenCode connection configuration (`OPENCODE_HOST`, `OPENCODE_PORT`)
+- Reliability switches (`RELIABILITY_CRON_ENABLED`, etc.)
 
 <a id="reliability-features"></a>
 ## 🛡️ Reliability Features (Heartbeat + Cron + Crash Rescue)
@@ -403,7 +458,7 @@ See [Troubleshooting Document](assets/docs/troubleshooting-en.md).
 | Document | Description |
 |---|---|
 | [Architecture](assets/docs/architecture-en.md) | Project layering and platform capabilities |
-| [Environment Variables](assets/docs/environment-en.md) | Complete environment configuration |
+| [Configuration Center](assets/docs/environment-en.md) | Complete business configuration (including Web panel config) |
 | [Reliability](assets/docs/reliability-en.md) | Heartbeat, Cron, and crash rescue |
 | [Feishu Config](assets/docs/feishu-config-en.md) | Event subscriptions and permissions |
 | [Commands](assets/docs/commands-en.md) | Complete command reference |

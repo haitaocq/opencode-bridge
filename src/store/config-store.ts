@@ -205,6 +205,51 @@ class ConfigStore {
       .run();
   }
 
+  // ──────────────────────────────────────────────
+  // 密码管理
+  // ──────────────────────────────────────────────
+
+  /** 获取管理员密码（数据库存储） */
+  getAdminPassword(): string | null {
+    const row = this.db
+      .prepare<[], { value: string }>(`SELECT value FROM admin_meta WHERE key = 'admin_password'`)
+      .get();
+    return row?.value || null;
+  }
+
+  /** 设置管理员密码 */
+  setAdminPassword(password: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO admin_meta (key, value) VALUES ('admin_password', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+      )
+      .run(password);
+  }
+
+  /** 获取密码修改时间 */
+  getPasswordChangedAt(): string | null {
+    const row = this.db
+      .prepare<[], { value: string }>(`SELECT value FROM admin_meta WHERE key = 'password_changed_at'`)
+      .get();
+    return row?.value || null;
+  }
+
+  /** 设置密码修改时间 */
+  setPasswordChangedAt(timestamp: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO admin_meta (key, value) VALUES ('password_changed_at', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+      )
+      .run(timestamp);
+  }
+
+  /** 判断是否需要修改密码（首次登录） */
+  needsPasswordChange(): boolean {
+    return this.getPasswordChangedAt() === null;
+  }
+
   getDbPath(): string {
     return this.dbPath;
   }

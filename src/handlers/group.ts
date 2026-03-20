@@ -284,11 +284,14 @@ export class GroupHandler {
         replyMessageId || null
       );
 
-      const success = await opencodeClient.replyQuestion(pending.request.id, answers);
-      
-      if (success) {
+      const result = await opencodeClient.replyQuestion(pending.request.id, answers);
+
+      if (result.ok) {
           questionHandler.remove(pending.request.id);
           outputBuffer.touch(`chat:${chatId}`);
+      } else if (result.expired) {
+          questionHandler.remove(pending.request.id);
+          await feishuClient.reply(replyMessageId, '⚠️ 问题已过期，请重新发起对话');
       } else {
           await feishuClient.reply(replyMessageId, '⚠️ 回答提交失败，请重试');
       }

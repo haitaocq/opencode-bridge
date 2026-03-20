@@ -1,6 +1,6 @@
 # Feishu / Discord × OpenCode 桥接服务 v2.9.2-beta-pr1
 
-[![v2.9.1](https://img.shields.io/badge/v2.9.1-3178C6)]()
+[![v2.9.2-beta](https://img.shields.io/badge/v2.9.2--beta-3178C6)]()
 [![Node.js >= 18](https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
@@ -10,6 +10,8 @@
 ---
 
 不只服务飞书，也服务 Discord。通过"平台适配层 + 根路由器 + OpenCode 事件中枢 + 领域处理器"，重点解决跨平台扩展、权限闭环稳定性、目录实例一致性和线上可维护性。
+
+**v2.9.2-beta 新增 Web 可视化配置中心**：配置参数由 `.env` 迁移至 SQLite 数据库，支持通过浏览器实时修改配置、管理 Cron 任务、查看服务状态，无需手动编辑配置文件。
 
 随着运行时 Cron（API + `/cron` + `///cron` + 自然语言语义解析）与本地可靠性治理落地，本项目和 OpenClaw 在"自动化调度 + 运维可用性"上的能力差距进一步缩小，同时保留本项目在多平台路由与权限闭环上的工程优势。
 
@@ -22,7 +24,7 @@
 - [架构概览](#架构概览)
 - [快速开始](#快速开始)
 - [部署与运维](#部署与运维)
-- [环境变量](#环境变量)
+- [配置中心](#配置中心)
 - [可靠性能力](#可靠性能力)
 - [飞书后台配置](#飞书后台配置)
 - [命令速查](#命令速查)
@@ -61,6 +63,7 @@
 | 工作目录/项目管理 | 创建会话时指定工作目录，支持项目别名、群默认项目、9 阶段安全校验 | `/project list`、`/session new <别名>`、`ALLOWED_DIRECTORIES` |
 | OpenCode 本地可靠性治理 | 运行时 Cron（API/命令/自然语言）+ 本地宕机自动救援（含配置备份/两级回退）+ 可选主动心跳 | `HEARTBEAT.md`、`RELIABILITY_*`、`logs/reliability-audit.jsonl` |
 | 部署运维闭环 | 提供部署/升级/检查/后台/systemd 的一体化入口 | `scripts/deploy.*`、`scripts/start.*` |
+| Web 可视化配置中心 | 浏览器访问配置面板，实时修改参数、管理 Cron 任务、查看服务状态，配置存储于 SQLite | `ADMIN_PORT`、`ADMIN_PASSWORD`、访问 `http://host:4098` |
 
 <a id="效果演示"></a>
 ## 🖼️ 效果演示
@@ -170,15 +173,33 @@ cd opencode-bridge
 - 检测 OpenCode 安装与端口状态
 - 可一键安装 OpenCode（`npm i -g opencode-ai`）
 - 安装项目依赖并编译桥接服务
-- 若 `.env` 不存在，会自动由 `.env.example` 复制生成（不会覆盖已有 `.env`）
-- 可在交互阶段直接输入 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 并写入 `.env`（支持回撤/跳过）
+- 若 `.env` 不存在，会自动生成包含 `ADMIN_PORT` 和 `ADMIN_PASSWORD` 的配置文件
 
 **提醒**：
 - 不添加 `guide` 后缀执行命令为菜单。
 - 这一条命令可以完成"部署与环境准备"。
-- 但飞书密钥需要你自己填，脚本不会替你写入真实凭据；未填写时服务无法正常接收飞书消息。
+- 启动服务后，通过浏览器访问 `http://localhost:4098` 进入可视化配置面板填写飞书配置。
 
-### 2) 填写飞书配置（必须，若上一步已输入可跳过）
+### 2) Web 配置面板（推荐）
+
+服务启动后，打开浏览器访问：
+```
+http://localhost:4098
+```
+
+在 Web 配置面板中完成：
+- 飞书应用配置（`FEISHU_APP_ID`、`FEISHU_APP_SECRET`）
+- OpenCode 连接配置
+- Discord 适配器配置
+- 可靠性参数配置
+- Cron 任务管理
+- 服务状态查看
+
+**首次访问**：密码在 `.env` 文件的 `ADMIN_PASSWORD` 字段，首次启动时会自动生成随机密码。
+
+### 3) 备用：手动编辑配置（传统方式）
+
+如需手动配置，可编辑 `.env` 文件：
 
 ```bash
 cp .env.example .env
@@ -188,13 +209,13 @@ cp .env.example .env
 - `FEISHU_APP_ID`
 - `FEISHU_APP_SECRET`
 
-### 3) 启动 OpenCode（保留 CLI 界面）
+### 4) 启动 OpenCode（保留 CLI 界面）
 
 ```bash
 opencode
 ```
 
-### 4) 启动桥接服务
+### 5) 启动桥接服务
 
 Linux/macOS：
 
@@ -214,7 +235,9 @@ Windows PowerShell：
 npm run dev
 ```
 
-### 5）npm CLI 安装（更适合本地常驻运行场景）
+启动后访问 `http://localhost:4098` 进入 Web 配置面板。
+
+### 6）npm CLI 安装（更适合本地常驻运行场景）
 
 ```bash
 npm install -g opencode-bridge
@@ -242,10 +265,32 @@ opencode-bridge
 
 详细部署说明见 [部署与运维文档](assets/docs/deployment.md)。
 
-<a id="环境变量"></a>
-## ⚙️ 环境变量
+<a id="配置中心"></a>
+## ⚙️ 配置中心
 
-核心配置：
+### Web 配置面板（推荐）
+
+服务启动后，访问 `http://localhost:4098` 可视化配置面板：
+
+- **实时配置**：修改参数后立即生效（部分敏感配置需重启）
+- **Cron 管理**：创建、启用/禁用、删除定时任务
+- **服务状态**：查看运行时长、版本、数据库路径等
+- **模型列表**：获取 OpenCode 可用的模型列表
+
+### .env 文件（仅启动参数）
+
+`.env` 文件现在仅用于存储 Admin 面板的启动参数：
+
+| 变量 | 必填 | 默认值 | 说明 |
+|---|---|---|---|
+| `ADMIN_PORT` | 否 | `4098` | Web 配置面板监听端口 |
+| `ADMIN_PASSWORD` | 否 | 自动生成 | Web 配置面板访问密码 |
+
+**注意**：`.env` 不再作为业务配置文件使用，业务配置存储于 SQLite 数据库。
+
+### 核心业务配置
+
+以下配置通过 Web 面板或 SQLite 数据库管理：
 
 | 变量 | 必填 | 默认值 | 说明 |
 |---|---|---|---|
@@ -256,7 +301,17 @@ opencode-bridge
 | `DISCORD_ENABLED` | 否 | `false` | 是否启用 Discord 适配器 |
 | `DISCORD_TOKEN` | 否 | - | Discord Bot Token |
 
-完整配置详见 [环境变量配置文档](assets/docs/environment.md)。
+完整配置详见 [配置中心文档](assets/docs/environment.md)。
+
+### 配置存储说明
+
+**配置迁移**：首次启动时，系统会自动将 `.env` 中的业务配置迁移至 SQLite 数据库（`data/config.db`），原 `.env` 备份为 `.env.backup`。
+
+**敏感配置重启**：以下配置修改后需要重启服务才能生效：
+- 飞书配置（`FEISHU_APP_ID`、`FEISHU_APP_SECRET`）
+- Discord 配置（`DISCORD_ENABLED`、`DISCORD_TOKEN`）
+- OpenCode 连接配置（`OPENCODE_HOST`、`OPENCODE_PORT`）
+- 可靠性开关（`RELIABILITY_CRON_ENABLED` 等）
 
 <a id="可靠性能力"></a>
 ## 🛡️ 可靠性能力（心跳 + Cron + 宕机救援）
@@ -393,7 +448,7 @@ RELIABILITY_LOOPBACK_ONLY=true
 | 文档 | 说明 |
 |---|---|
 | [架构文档](assets/docs/architecture.md) | 项目分层设计与平台能力矩阵 |
-| [环境变量](assets/docs/environment.md) | 完整环境变量配置说明 |
+| [配置中心](assets/docs/environment.md) | 完整业务配置说明（含 Web 面板配置） |
 | [可靠性指南](assets/docs/reliability.md) | 心跳、Cron 与宕机救援配置 |
 | [飞书后台配置](assets/docs/feishu-config.md) | 事件订阅与权限配置 |
 | [命令速查](assets/docs/commands.md) | 完整命令列表与使用说明 |

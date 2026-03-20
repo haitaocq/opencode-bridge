@@ -1076,7 +1076,7 @@ class OpencodeClientWrapper extends EventEmitter {
     allow: boolean,
     remember: boolean = false,
     options?: PermissionResponseOptions
-  ): Promise<boolean> {
+  ): Promise<{ ok: boolean; expired?: boolean }> {
     const responseType = allow ? (remember ? 'always' : 'once') : 'reject';
     const directoryCandidates = this.buildPermissionDirectoryCandidates(options);
 
@@ -1095,7 +1095,13 @@ class OpencodeClientWrapper extends EventEmitter {
         );
 
         if (response.ok) {
-          return true;
+          return { ok: true };
+        }
+
+        // 检查是否为过期错误（404 或特定错误信息）
+        if (response.status === 404) {
+          console.warn(`[OpenCode] 权限请求已过期: session=${sessionId}, permission=${permissionId}`);
+          return { ok: false, expired: true };
         }
 
         const detail = await response.text().catch(() => '');
@@ -1112,7 +1118,7 @@ class OpencodeClientWrapper extends EventEmitter {
       }
     }
 
-    return false;
+    return { ok: false };
   }
 
   // 获取工作区列表
@@ -1496,7 +1502,7 @@ class OpencodeClientWrapper extends EventEmitter {
   async replyQuestion(
     requestId: string,
     answers: string[][]
-  ): Promise<boolean> {
+  ): Promise<{ ok: boolean; expired?: boolean }> {
     try {
       const response = await fetch(
         `${opencodeConfig.baseUrl}/question/${requestId}/reply`,
@@ -1507,6 +1513,11 @@ class OpencodeClientWrapper extends EventEmitter {
         }
       );
       if (!response.ok) {
+        // 检查是否为过期错误
+        if (response.status === 404) {
+          console.warn(`[OpenCode] 问题请求已过期: requestId=${requestId}`);
+          return { ok: false, expired: true };
+        }
         const detail = await response.text().catch(() => '');
         const suffix = detail ? `: ${detail.slice(0, 300)}` : '';
         const message = appendAuthHint(
@@ -1515,15 +1526,15 @@ class OpencodeClientWrapper extends EventEmitter {
         );
         console.error(`[OpenCode] ${message}`);
       }
-      return response.ok;
+      return { ok: response.ok };
     } catch (error) {
       console.error('[OpenCode] 回复问题失败:', error);
-      return false;
+      return { ok: false };
     }
   }
 
   // 拒绝/跳过问题
-  async rejectQuestion(requestId: string): Promise<boolean> {
+  async rejectQuestion(requestId: string): Promise<{ ok: boolean; expired?: boolean }> {
     try {
       const response = await fetch(
         `${opencodeConfig.baseUrl}/question/${requestId}/reject`,
@@ -1533,6 +1544,11 @@ class OpencodeClientWrapper extends EventEmitter {
         }
       );
       if (!response.ok) {
+        // 检查是否为过期错误
+        if (response.status === 404) {
+          console.warn(`[OpenCode] 问题请求已过期: requestId=${requestId}`);
+          return { ok: false, expired: true };
+        }
         const detail = await response.text().catch(() => '');
         const suffix = detail ? `: ${detail.slice(0, 300)}` : '';
         const message = appendAuthHint(
@@ -1541,10 +1557,10 @@ class OpencodeClientWrapper extends EventEmitter {
         );
         console.error(`[OpenCode] ${message}`);
       }
-      return response.ok;
+      return { ok: response.ok };
     } catch (error) {
       console.error('[OpenCode] 拒绝问题失败:', error);
-      return false;
+      return { ok: false };
     }
   }
 

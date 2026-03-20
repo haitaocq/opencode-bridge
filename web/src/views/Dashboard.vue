@@ -159,6 +159,34 @@
       </el-row>
     </el-card>
 
+    <!-- 健康状态检测 -->
+    <el-card shadow="never" class="config-card">
+      <template #header>
+        <div class="card-header-row">
+          <span class="card-title">🏥 健康状态检测</span>
+          <div class="header-actions">
+            <el-button size="small" :icon="Refresh" @click="checkHealth" :loading="healthLoading">检测</el-button>
+            <el-button size="small" type="warning" :icon="Setting" @click="handleRepair" :loading="repairLoading">修复</el-button>
+          </div>
+        </div>
+      </template>
+      <el-row :gutter="16">
+        <el-col :span="6" v-for="(check, key) in healthChecks" :key="key">
+          <div class="health-item" :class="'health-' + check.status">
+            <div class="health-icon">
+              <el-icon v-if="check.status === 'ok'" color="#67c23a"><CircleCheck /></el-icon>
+              <el-icon v-else-if="check.status === 'warning'" color="#e6a23c"><Warning /></el-icon>
+              <el-icon v-else color="#f56c6c"><CircleClose /></el-icon>
+            </div>
+            <div class="health-info">
+              <div class="health-name">{{ getHealthName(key) }}</div>
+              <div class="health-message">{{ check.message }}</div>
+            </div>
+          </div>
+        </el-col>
+      </el-row>
+    </el-card>
+
     <!-- 配置摘要 -->
     <el-card shadow="never" class="config-card">
       <template #header>
@@ -183,11 +211,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
-  Monitor, Timer, DataLine, Clock, ChatDotRound, Connection, Cpu, Warning, DataAnalysis
+  Monitor, Timer, DataLine, Clock, ChatDotRound, Connection, Cpu, Warning, DataAnalysis,
+  Refresh, Setting, CircleCheck, CircleClose
 } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { useConfigStore } from '../stores/config'
+import { configApi } from '../api/index'
 
 const store = useConfigStore()
 
@@ -195,6 +226,21 @@ const store = useConfigStore()
 const status = computed(() => store.status)
 const jobs = computed(() => store.cronJobs)
 const settings = computed(() => store.settings)
+
+// 健康检测状态
+interface HealthCheck {
+  status: 'ok' | 'warning' | 'error' | 'unknown'
+  message: string
+}
+
+const healthLoading = ref(false)
+const repairLoading = ref(false)
+const healthChecks = ref<Record<string, HealthCheck>>({
+  database: { status: 'unknown', message: '未检测' },
+  opencode: { status: 'unknown', message: '未检测' },
+  feishu: { status: 'unknown', message: '未检测' },
+  discord: { status: 'unknown', message: '未检测' },
+})
 
 const dbStatus = computed(() => {
   if (!status.value?.dbPath) return '未知'
@@ -205,6 +251,50 @@ const dbStatus = computed(() => {
 const runningCount = computed(() => jobs.value.filter(j => j.enabled).length)
 const pausedCount = computed(() => jobs.value.filter(j => !j.enabled).length)
 const errorCount = computed(() => jobs.value.filter(j => !!j.state?.lastError).length)
+
+onMounted(() => {
+  checkHealth()
+})
+
+async function checkHealth() {
+  healthLoading.value = true
+  try {
+    const health = await configApi.getHealth()
+    healthChecks.value = health.checks as Record<string, HealthCheck>
+  } catch (e: any) {
+    ElMessage.error('健康检测失败: ' + e.message)
+  } finally {
+    healthLoading.value = false
+  }
+}
+
+async function handleRepair() {
+  repairLoading.value = true
+  try {
+    const result = await configApi.repair()
+    if (result.results.length > 0) {
+      ElMessage.success('修复完成: ' + result.results.join(', '))
+    } else {
+      ElMessage.info('无需修复')
+    }
+    // 重新检测健康状态
+    await checkHealth()
+  } catch (e: any) {
+    ElMessage.error('修复失败: ' + e.message)
+  } finally {
+    repairLoading.value = false
+  }
+}
+
+function getHealthName(key: string): string {
+  const names: Record<string, string> = {
+    database: '数据库',
+    opencode: 'OpenCode',
+    feishu: '飞书',
+    discord: 'Discord',
+  }
+  return names[key] || key
+}
 
 function formatUptime(seconds: number): string {
   if (seconds < 60) return `${seconds}秒`
@@ -293,4 +383,21 @@ function maskId(id?: string): string {
 .cron-stat-num.gray { color: #909399; }
 .cron-stat-num.red { color: #f56c6c; }
 .cron-stat-label { font-size: 12px; color: #909399; margin-top: 4px; }
+
+.health-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.health-ok { background: #f0f9eb; }
+.health-warning { background: #fdf6ec; }
+.health-error { background: #fef0f0; }
+.health-icon { margin-right: 12px; }
+.health-info { flex: 1; }
+.health-name { font-size: 14px; font-weight: 600; color: #1a1a2e; }
+.health-message { font-size: 12px; color: #909399; margin-top: 2px; }
+.header-actions { display: flex; gap: 8px; }
 </style>

@@ -154,9 +154,11 @@ function findOpenCodeProcesses(excludeSelf = false, excludePid = null) {
 // ==================== 进程判断逻辑 ====================
 
 function isBridgeCommand(command) {
-  // 必须匹配 dist/index.js 才是真正的 Bridge 进程
+  // 匹配生产模式: dist/index.js
+  // 匹配开发模式: tsx watch src/index.ts 或 tsx src/index.ts
   // 注意：不能只匹配项目名，因为其他脚本也在同一目录下运行
-  return command.includes('dist/index.js');
+  return command.includes('dist/index.js') ||
+         /tsx\s+(?:watch\s+)?src\/index\.ts/.test(command);
 }
 
 function isOpenCodeCommand(command) {

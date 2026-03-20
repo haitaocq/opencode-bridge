@@ -16,6 +16,40 @@
 
 **Note**: The menu includes OpenCode installation/check/startup and first-time guide; deployment will additionally provide strong prompts for OpenCode installation and port check (non-blocking).
 
+## Web Configuration Panel
+
+### Access Configuration Panel
+
+After service startup, access via browser:
+
+```
+http://localhost:4098
+```
+
+### Panel Features
+
+- **Configuration Management**: Real-time modification of Feishu, Discord, OpenCode, reliability and other configuration parameters
+- **Cron Tasks**: Create, enable/disable, delete scheduled tasks
+- **Service Status**: View uptime, version, database path
+- **Model List**: Get OpenCode available models
+- **Service Control**: Remote restart service
+
+### Access Password
+
+The access password is stored in the `ADMIN_PASSWORD` field of `.env` file:
+
+- Random password automatically generated on first startup
+- Can manually modify `.env` file to change password
+- If `ADMIN_PASSWORD` is empty, no password required for access
+
+### Configuration Storage
+
+Configuration parameters are stored in SQLite database:
+
+- Database path: `data/config.db`
+- Automatically migrated from `.env` on first startup
+- Original `.env` backed up to `.env.backup`
+
 ## Linux Resident (systemd)
 
 The management menu provides the following operations:
@@ -36,7 +70,7 @@ opencode-bridge
 
 **Notes**:
 - npm package mainly provides CLI distribution and version management convenience, does not replace OpenCode local service and Feishu/Discord configuration.
-- Before running, still need to prepare `.env`, local `opencode serve`, and corresponding platform bot credentials.
+- After running, complete business configuration through Web configuration panel (`http://localhost:4098`).
 - CLI defaults to reading `.env` from current working directory; if no `.env` in current directory, automatically falls back to `~/.config/opencode-bridge/.env`.
 - You can also explicitly specify config directory: `opencode-bridge --config-dir /path/to/config`.
 - If you prefer source code deployment, continuing to use `scripts/deploy.*` / `scripts/start.*` from the repository is perfectly fine.
@@ -55,6 +89,8 @@ cp "$(npm root -g)/opencode-bridge/.env.example" ~/.config/opencode-bridge/.env
 # Start directly with default config directory
 opencode-bridge
 
+# After startup, visit http://localhost:4098 to access configuration panel
+
 # Or place independent .env in current directory
 mkdir -p ~/opencode-bridge-prod
 cp .env.example ~/opencode-bridge-prod/.env
@@ -64,3 +100,33 @@ opencode-bridge
 # Or explicitly specify config directory
 opencode-bridge --config-dir ~/.config/opencode-bridge
 ```
+
+## Configuration File Notes
+
+### .env File (Startup Parameters)
+
+After v2.9.2-beta, `.env` file only stores Admin panel startup parameters:
+
+```dotenv
+# Admin panel port (default 4098)
+ADMIN_PORT=4098
+
+# Admin panel access password (empty means no password required)
+ADMIN_PASSWORD=your-admin-password
+```
+
+### SQLite Database (Business Configuration)
+
+All business configurations are stored in SQLite database:
+
+- **Database Path**: `data/config.db`
+- **First Migration**: Business configuration automatically migrated from `.env` on startup
+- **Backup Location**: Original `.env` backed up to `.env.backup`
+
+### Configuration Modification Methods
+
+| Method | Description |
+|---|---|
+| Web Panel | Visit `http://localhost:4098` for visual modification |
+| SQLite Tool | Directly edit `data/config.db` database |
+| Config File | Configure in `.env` before first startup (will auto-migrate) |

@@ -32,6 +32,15 @@
           <span>Cron 任务管理</span>
           <el-badge v-if="store.cronJobCount > 0" :value="store.runningJobCount" type="success" class="cron-badge" />
         </el-menu-item>
+        <el-menu-item index="/logs">
+          <el-icon><Document /></el-icon>
+          <span>日志管理</span>
+          <el-badge v-if="errorLogCount > 0" :value="errorLogCount" type="danger" class="cron-badge" />
+        </el-menu-item>
+        <el-menu-item index="/settings">
+          <el-icon><Setting /></el-icon>
+          <span>系统设置</span>
+        </el-menu-item>
       </el-menu>
 
       <!-- 底部状态区 -->
@@ -40,15 +49,26 @@
           <el-text size="small" type="info">v{{ status.version }}</el-text>
           <el-text size="small" type="info">运行 {{ formatUptime(status.uptime) }}</el-text>
         </div>
-        <el-button
-          :type="store.pendingRestart ? 'warning' : 'default'"
-          size="small"
-          :icon="RefreshRight"
-          @click="handleRestart"
-          class="restart-btn"
-        >
-          {{ store.pendingRestart ? '需要重启' : '重启服务' }}
-        </el-button>
+        <div class="footer-row">
+          <el-button
+            size="small"
+            :icon="Key"
+            @click="handleChangePassword"
+            class="footer-btn"
+          >
+            修改密码
+          </el-button>
+          <el-button
+            type="danger"
+            size="small"
+            :icon="SwitchButton"
+            @click="handleLogout"
+            class="footer-btn"
+            plain
+          >
+            退出
+          </el-button>
+        </div>
       </div>
     </el-aside>
 
@@ -67,6 +87,7 @@
         </template>
         <template #default>
           <el-button size="small" type="warning" @click="handleRestart">立即重启</el-button>
+          <el-button size="small" @click="goToSettings">前往系统设置</el-button>
           <el-button size="small" @click="store.pendingRestart = false">稍后手动重启</el-button>
         </template>
       </el-alert>
@@ -93,8 +114,9 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { RefreshRight, DataAnalysis, Loading } from '@element-plus/icons-vue'
+import { DataAnalysis, Loading, Document, SwitchButton, Key } from '@element-plus/icons-vue'
 import { useConfigStore } from './stores/config'
+import { configApi } from './api/index'
 import type { ServiceStatus } from './api/index'
 
 const route = useRoute()
@@ -104,12 +126,16 @@ const status = ref<ServiceStatus | null>(null)
 const restartDialogVisible = ref(false)
 const restarting = ref(false)
 const loginError = ref(false)
+const errorLogCount = ref(0)
 
 async function loadAppData() {
   if (route.path === '/login' || !localStorage.getItem('admin_token')) return
   try {
     await store.initializeAll()
     status.value = store.status
+    // 加载日志统计
+    const logStats = await configApi.getLogStats()
+    errorLogCount.value = logStats.error
   } catch (e: any) {
     if (e.response?.status === 401) {
       loginError.value = true
@@ -148,6 +174,19 @@ async function confirmRestart() {
   } finally {
     restarting.value = false
   }
+}
+
+function handleLogout() {
+  localStorage.removeItem('admin_token')
+  router.push('/login')
+}
+
+function handleChangePassword() {
+  router.push('/change-password')
+}
+
+function goToSettings() {
+  router.push('/settings')
 }
 </script>
 
@@ -202,7 +241,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 }
 
 .status-info { display: flex; flex-direction: column; gap: 2px; }
-.restart-btn { width: 100%; }
+.footer-row { display: flex; gap: 8px; margin-top: 4px; }
+.footer-btn { flex: 1; }
 
 .main-content {
   padding: 24px;

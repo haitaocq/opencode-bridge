@@ -16,6 +16,40 @@
 
 **注意**：菜单内已包含 OpenCode 的安装/检查/启动与首次引导，部署时会额外给出 OpenCode 安装与端口检查强提示（不阻断部署）。
 
+## Web 配置面板
+
+### 访问配置面板
+
+服务启动后，通过浏览器访问：
+
+```
+http://localhost:4098
+```
+
+### 面板功能
+
+- **配置管理**：实时修改飞书、Discord、OpenCode、可靠性等所有配置参数
+- **Cron 任务**：创建、启用/禁用、删除定时任务
+- **服务状态**：查看运行时长、版本、数据库路径
+- **模型列表**：获取 OpenCode 可用模型
+- **服务控制**：远程重启服务
+
+### 访问密码
+
+访问密码存储在 `.env` 文件的 `ADMIN_PASSWORD` 字段：
+
+- 首次启动时自动生成随机密码
+- 可手动修改 `.env` 文件更改密码
+- 若 `ADMIN_PASSWORD` 为空，则无需密码即可访问
+
+### 配置存储
+
+配置参数存储在 SQLite 数据库中：
+
+- 数据库路径：`data/config.db`
+- 首次启动时自动从 `.env` 迁移
+- 原 `.env` 备份为 `.env.backup`
+
 ## Linux 常驻（systemd）
 
 管理菜单内提供以下操作：
@@ -36,7 +70,7 @@ opencode-bridge
 
 **说明**：
 - npm 包主要提供 CLI 分发与版本管理便利，不替代 OpenCode 本地服务与飞书/Discord 配置。
-- 运行前仍需准备 `.env`、本地 `opencode serve`，以及对应平台的机器人凭据。
+- 运行后通过 Web 配置面板（`http://localhost:4098`）完成业务配置。
 - CLI 默认优先读取当前工作目录下的 `.env`；若当前目录没有 `.env`，会自动回退读取 `~/.config/opencode-bridge/.env`。
 - 你也可以显式指定配置目录：`opencode-bridge --config-dir /path/to/config`。
 - 若你偏好源码部署，继续使用仓库里的 `scripts/deploy.*` / `scripts/start.*` 也完全没问题。
@@ -55,6 +89,8 @@ cp "$(npm root -g)/opencode-bridge/.env.example" ~/.config/opencode-bridge/.env
 # 直接使用默认配置目录启动
 opencode-bridge
 
+# 启动后访问 http://localhost:4098 进入配置面板
+
 # 或者在当前目录放独立 .env
 mkdir -p ~/opencode-bridge-prod
 cp .env.example ~/opencode-bridge-prod/.env
@@ -64,3 +100,33 @@ opencode-bridge
 # 也可以显式指定配置目录
 opencode-bridge --config-dir ~/.config/opencode-bridge
 ```
+
+## 配置文件说明
+
+### .env 文件（启动参数）
+
+v2.9.2-beta 版本后，`.env` 文件仅存储 Admin 面板的启动参数：
+
+```dotenv
+# Admin 面板端口（默认 4098）
+ADMIN_PORT=4098
+
+# Admin 面板访问密码（留空则无需密码）
+ADMIN_PASSWORD=your-admin-password
+```
+
+### SQLite 数据库（业务配置）
+
+所有业务配置存储在 SQLite 数据库中：
+
+- **数据库路径**：`data/config.db`
+- **首次迁移**：启动时自动从 `.env` 迁移业务配置
+- **备份位置**：原 `.env` 备份为 `.env.backup`
+
+### 配置修改方式
+
+| 方式 | 说明 |
+|---|---|
+| Web 面板 | 访问 `http://localhost:4098` 可视化修改 |
+| SQLite 工具 | 直接编辑 `data/config.db` 数据库 |
+| 配置文件 | 首次启动前在 `.env` 中配置（会自动迁移） |

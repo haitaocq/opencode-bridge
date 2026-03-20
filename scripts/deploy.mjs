@@ -1037,10 +1037,63 @@ function printLinuxStatus() {
   if (fs.existsSync(pidFile)) {
     console.log(`[deploy] 后台进程 PID 文件: ${pidFile}`);
   }
-  
+
   const port = getRuntimeEnvValue('ADMIN_PORT') || '4098';
   console.log(`[deploy] 🌐 Web 管理中心监听端口: ${port} `);
   console.log(`[deploy] 提示: 若服务正在运行，请使用浏览器访问 http://<机器IP>:${port}`);
+}
+
+// ──────────────────────────────────────────────
+// 重置管理员密码
+// ──────────────────────────────────────────────
+
+function resolveDataDir() {
+  const explicit = process.env.OPENCODE_BRIDGE_CONFIG_DIR?.trim();
+  if (explicit) {
+    return path.resolve(explicit);
+  }
+  return path.join(rootDir, 'data');
+}
+
+async function resetAdminPassword() {
+  const dataDir = resolveDataDir();
+  const dbPath = path.join(dataDir, 'config.db');
+
+  if (!fs.existsSync(dbPath)) {
+    console.log('[deploy] 数据库文件不存在，密码将在首次启动时从 .env 初始化');
+    return;
+  }
+
+  // 生成新密码
+  const newPassword = crypto.randomBytes(8).toString('hex');
+
+  // 使用 better-sqlite3 直接操作数据库
+  try {
+    // 动态导入 better-sqlite3
+    const Database = (await import('better-sqlite3')).default;
+    const db = new Database(dbPath);
+
+    // 更新密码并清除 password_changed_at（强制用户再次修改）
+    db.prepare(`
+      INSERT INTO admin_meta (key, value) VALUES ('admin_password', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(newPassword);
+
+    db.prepare(`
+      INSERT INTO admin_meta (key, value) VALUES ('password_changed_at', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(new Date().toISOString());
+
+    db.close();
+
+    console.log(`[deploy] ✅ 管理员密码已重置为: ${newPassword}`);
+    console.log('[deploy] 请使用新密码登录 Web 管理面板');
+    console.log('[deploy] 登录后系统会要求您修改密码');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[deploy] 重置密码失败: ${message}`);
+    console.error('[deploy] 请确保服务已停止后重试');
+  }
 }
 
 async function showMenu() {
@@ -1052,34 +1105,24 @@ async function showMenu() {
 
   try {
     await ensureRuntimeReady();
-    await checkOpencodeEnvironment();
 
     while (true) {
       console.log('\n========== Feishu OpenCode Bridge ==========');
       if (isLinux()) {
-        console.log('1) 一键部署（默认清洁安装，保留 .env/cron 等用户数据）');
-        console.log('2) 启动后台进程（通用）');
-        console.log('3) 停止后台进程（通用）');
-        console.log('4) 安装并启动 systemd 服务（常驻）');
-        console.log('5) 停止并禁用 systemd 服务');
-        console.log('6) 卸载 systemd 服务');
-        console.log('7) 查看运行状态');
-        console.log('8) 一键更新升级（默认清洁升级，保留 .env/cron 等用户数据）');
-        console.log('9) 安装/升级 OpenCode（npm i -g opencode-ai）');
-        console.log('10) 检查 OpenCode 环境（安装与端口）');
-        console.log('11) 启动 OpenCode CLI（调试/挂载模式）');
-        console.log('12) 首次引导（推荐）');
-        console.log('0) 退出');
-      } else {
-        console.log('1) 一键部署（默认清洁安装，保留 .env/cron 等用户数据）');
+        console.log('1) 一键部署');
         console.log('2) 启动后台进程');
         console.log('3) 停止后台进程');
-        console.log('4) 卸载后台进程（停止并清理日志/PID）');
-        console.log('5) 一键更新升级（默认清洁升级，保留 .env/cron 等用户数据）');
-        console.log('6) 安装/升级 OpenCode（npm i -g opencode-ai）');
-        console.log('7) 检查 OpenCode 环境（安装与端口）');
-        console.log('8) 启动 OpenCode CLI（调试/挂载模式）');
-        console.log('9) 首次引导（推荐）');
+        console.log('4) 安装 systemd 服务');
+        console.log('5) 停止 systemd 服务');
+        console.log('6) 卸载 systemd 服务');
+        console.log('7) 查看运行状态');
+        console.log('8) 重置管理员密码');
+        console.log('0) 退出');
+      } else {
+        console.log('1) 一键部署');
+        console.log('2) 启动后台进程');
+        console.log('3) 停止后台进程');
+        console.log('4) 重置管理员密码');
         console.log('0) 退出');
       }
 
@@ -1110,19 +1153,7 @@ async function showMenu() {
               printLinuxStatus();
               break;
             case '8':
-              await upgradeProject();
-              break;
-            case '9':
-              await installOrUpgradeOpencode();
-              break;
-            case '10':
-              await runOpencodeCheck();
-              break;
-            case '11':
-              await startOpencodeCliWithManagedConfig();
-              break;
-            case '12':
-              await runBeginnerGuide();
+              await resetAdminPassword();
               break;
             case '0':
               return;
@@ -1141,22 +1172,7 @@ async function showMenu() {
               stopBackgroundProcess();
               break;
             case '4':
-              uninstallBackgroundProcess();
-              break;
-            case '5':
-              await upgradeProject();
-              break;
-            case '6':
-              await installOrUpgradeOpencode();
-              break;
-            case '7':
-              await runOpencodeCheck();
-              break;
-            case '8':
-              await startOpencodeCliWithManagedConfig();
-              break;
-            case '9':
-              await runBeginnerGuide();
+              await resetAdminPassword();
               break;
             case '0':
               return;
@@ -1178,21 +1194,16 @@ async function showMenu() {
 function printUsage() {
   console.log('用法: node scripts/deploy.mjs [action]');
   console.log('可选 action:');
-  console.log('  deploy                一键部署（默认清洁安装，保留 .env/cron 等用户数据）');
-  console.log('  upgrade               一键更新升级（默认清洁升级，保留 .env/cron 等用户数据）');
-  console.log('  opencode-install      安装/升级 OpenCode（npm i -g opencode-ai）');
-  console.log('  opencode-check        检查 OpenCode 安装与端口状态');
-  console.log('  opencode-start        启动 OpenCode CLI（自动写入 server 配置）');
-  console.log('  guide                 首次引导（推荐）');
-  console.log('  start                 启动后台进程');
-  console.log('  stop                  停止后台进程');
-  console.log('  uninstall             卸载后台进程（停止并清理日志/PID）');
-  console.log('  menu                  打开交互菜单（默认）');
+  console.log('  deploy           一键部署');
+  console.log('  start            启动后台进程');
+  console.log('  stop             停止后台进程');
+  console.log('  reset-password   重置管理员密码');
+  console.log('  menu             打开交互菜单（默认）');
   if (isLinux()) {
-    console.log('  service-install       安装并启动 systemd 服务');
-    console.log('  service-disable       停止并禁用 systemd 服务');
-    console.log('  service-uninstall     卸载 systemd 服务');
-    console.log('  status                查看 systemd/进程状态');
+    console.log('  service-install  安装并启动 systemd 服务');
+    console.log('  service-disable  停止并禁用 systemd 服务');
+    console.log('  service-uninstall 卸载 systemd 服务');
+    console.log('  status           查看运行状态');
   }
 }
 
@@ -1207,30 +1218,11 @@ async function main() {
       case 'deploy':
         await deployProject();
         break;
-      case 'upgrade':
-      case 'update':
-        await upgradeProject();
-        break;
-      case 'opencode-install':
-        await installOrUpgradeOpencode();
-        break;
-      case 'opencode-check':
-        await runOpencodeCheck();
-        break;
-      case 'opencode-start':
-        await startOpencodeCliWithManagedConfig();
-        break;
-      case 'guide':
-        await runBeginnerGuide();
-        break;
       case 'start':
         startBackgroundProcess();
         break;
       case 'stop':
         stopBackgroundProcess();
-        break;
-      case 'uninstall':
-        uninstallBackgroundProcess();
         break;
       case 'service-install':
         await installSystemdService();
@@ -1243,6 +1235,9 @@ async function main() {
         break;
       case 'status':
         printLinuxStatus();
+        break;
+      case 'reset-password':
+        await resetAdminPassword();
         break;
       case 'help':
       case '--help':

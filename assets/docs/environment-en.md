@@ -1,4 +1,36 @@
-# Environment Variables Configuration
+# Configuration Center
+
+> **v2.9.2-beta Architecture Change**: Business configuration parameters have been migrated to SQLite database storage, managed through Web visual panel. The `.env` file is only used for storing Admin panel startup parameters, no longer used as business configuration file.
+
+## Configuration Management Methods
+
+### Method 1: Web Visual Panel (Recommended)
+
+After service startup, visit `http://localhost:4098` to access the configuration panel:
+
+- Real-time modification of all configuration parameters
+- Manage Cron scheduled tasks
+- View service running status
+- Sensitive fields automatically masked
+
+### Method 2: SQLite Database
+
+Configuration is stored in `data/config.db` database, can be viewed or modified directly through database tools.
+
+### Method 3: .env File (Startup Parameters Only)
+
+The `.env` file now only stores Admin panel startup parameters:
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `ADMIN_PORT` | No | `4098` | Web configuration panel listen port |
+| `ADMIN_PASSWORD` | No | Auto-generated | Web configuration panel access password |
+
+---
+
+## Business Configuration Parameters
+
+The following parameters are configured through Web panel, or automatically migrated from `.env` to database on first startup:
 
 Based on actual reading from `src/config.ts` and `src/index.ts`:
 
@@ -127,3 +159,43 @@ Based on actual reading from `src/config.ts` and `src/index.ts`:
 - JSON format mapping short names to absolute paths, e.g., `{"frontend":"/home/user/frontend"}`.
 - Users can create sessions using aliases via `/session new frontend`, no need to memorize full paths.
 - Alias paths are also constrained by `ALLOWED_DIRECTORIES`.
+
+---
+
+## Configuration Migration Notes
+
+### First Startup Migration
+
+On first startup of v2.9.2-beta, the system automatically executes:
+
+1. Detects business configuration in `.env` file
+2. Writes configuration to SQLite database (`data/config.db`)
+3. Marks migration as complete
+4. Original `.env` is backed up to `.env.backup`
+
+### Configuration Effect Rules
+
+| Configuration Type | Effect Method After Modification |
+|---|---|
+| Display control (SHOW_*) | Immediate effect |
+| Whitelist (ALLOWED_*) | Immediate effect |
+| Feishu config (FEISHU_*) | Requires service restart |
+| Discord config (DISCORD_*) | Requires service restart |
+| OpenCode connection (OPENCODE_HOST/PORT) | Requires service restart |
+| Reliability switches (RELIABILITY_*) | Requires service restart |
+
+### Web Panel API
+
+The configuration panel provides the following API endpoints:
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/config` | GET | Get current configuration (sensitive fields masked) |
+| `/api/config` | POST | Save configuration |
+| `/api/cron` | GET | List all Cron tasks |
+| `/api/cron/create` | POST | Create Cron task |
+| `/api/cron/:id/toggle` | POST | Enable/disable task |
+| `/api/cron/:id` | DELETE | Delete task |
+| `/api/admin/status` | GET | Get service status |
+| `/api/admin/restart` | POST | Restart service |
+| `/api/opencode/models` | GET | Get OpenCode available models |
