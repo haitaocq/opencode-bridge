@@ -301,6 +301,11 @@ export const configApi = {
     return res.data
   },
 
+  async stopOpenCode(): Promise<{ ok: boolean; message: string }> {
+    const res = await http.post('/opencode/stop')
+    return res.data
+  },
+
   async checkOpenCodeUpdate(): Promise<OpenCodeUpdateCheck> {
     const res = await http.get<OpenCodeUpdateCheck>('/opencode/check-update')
     return res.data
@@ -308,6 +313,21 @@ export const configApi = {
 
   async checkBridgeUpdate(): Promise<{ hasUpdate: boolean; currentVersion: string; latestVersion: string | null }> {
     const res = await http.get<{ hasUpdate: boolean; currentVersion: string; latestVersion: string | null }>('/admin/check-update')
+    return res.data
+  },
+
+  async shutdown(): Promise<{ ok: boolean; message: string }> {
+    const res = await http.post<{ ok: boolean; message: string }>('/admin/shutdown')
+    return res.data
+  },
+
+  async getLoginTimeout(): Promise<{ timeoutMinutes: number }> {
+    const res = await http.get<{ timeoutMinutes: number }>('/admin/login-timeout')
+    return res.data
+  },
+
+  async setLoginTimeout(timeoutMinutes: number): Promise<{ ok: boolean; timeoutMinutes: number; message: string }> {
+    const res = await http.put<{ ok: boolean; timeoutMinutes: number; message: string }>('/admin/login-timeout', { timeoutMinutes })
     return res.data
   },
 }

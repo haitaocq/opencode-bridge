@@ -253,14 +253,18 @@ export const userConfig = {
   },
 };
 
-// 模型配置
-const configuredDefaultProvider = process.env.DEFAULT_PROVIDER?.trim();
-const configuredDefaultModel = process.env.DEFAULT_MODEL?.trim();
-const hasConfiguredDefaultModel = Boolean(configuredDefaultProvider && configuredDefaultModel);
-
+// 模型配置（动态读取，支持运行时更新）
 export const modelConfig = {
-  defaultProvider: hasConfiguredDefaultModel ? configuredDefaultProvider : undefined,
-  defaultModel: hasConfiguredDefaultModel ? configuredDefaultModel : undefined,
+  get defaultProvider(): string | undefined {
+    const provider = process.env.DEFAULT_PROVIDER?.trim();
+    const model = process.env.DEFAULT_MODEL?.trim();
+    return provider && model ? provider : undefined;
+  },
+  get defaultModel(): string | undefined {
+    const provider = process.env.DEFAULT_PROVIDER?.trim();
+    const model = process.env.DEFAULT_MODEL?.trim();
+    return provider && model ? model : undefined;
+  },
 };
 
 // 权限配置

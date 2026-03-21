@@ -250,6 +250,24 @@ class ConfigStore {
     return this.getPasswordChangedAt() === null;
   }
 
+  /** 获取登录超时时间（分钟），0 表示不限制 */
+  getLoginTimeout(): number {
+    const row = this.db
+      .prepare<[], { value: string }>(`SELECT value FROM admin_meta WHERE key = 'login_timeout_minutes'`)
+      .get();
+    return row ? parseInt(row.value, 10) : 0;
+  }
+
+  /** 设置登录超时时间（分钟） */
+  setLoginTimeout(minutes: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO admin_meta (key, value) VALUES ('login_timeout_minutes', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+      )
+      .run(String(minutes));
+  }
+
   getDbPath(): string {
     return this.dbPath;
   }

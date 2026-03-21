@@ -186,6 +186,15 @@ export function createAdminServer(options: AdminServerOptions): { start: () => v
 
     configStore.set(merged);
 
+    // 同步更新 process.env，确保运行时配置立即生效
+    for (const [key, value] of Object.entries(merged)) {
+      if (value !== undefined && value !== '') {
+        process.env[key] = String(value);
+      } else {
+        delete process.env[key];
+      }
+    }
+
     // 检测哪些敏感 key 发生了变更
     const changedRestartKeys = RESTART_REQUIRED_KEYS.filter(k => {
       const oldVal = (current as Record<string, string | undefined>)[k] ?? '';
@@ -557,6 +566,24 @@ export function createAdminServer(options: AdminServerOptions): { start: () => v
     }
   });
 
+  // ── POST /api/opencode/stop
+  api.post('/opencode/stop', (_req, res) => {
+    res.json({ ok: true, message: '正在终止 OpenCode...' });
+
+    // 异步终止 OpenCode 进程
+    setTimeout(() => {
+      try {
+        execSync('node ' + path.join(process.cwd(), 'scripts', 'process-manager.mjs') + ' kill-opencode', {
+          encoding: 'utf-8',
+          timeout: 10000,
+        });
+        console.log('[Admin] OpenCode 进程已终止');
+      } catch (error: any) {
+        console.error('[Admin] OpenCode 终止失败:', error.message);
+      }
+    }, 100);
+  });
+
   // ── GET /api/admin/health（健康检测）
   api.get('/admin/health', async (_req, res) => {
     const health = {
@@ -748,6 +775,60 @@ export function createAdminServer(options: AdminServerOptions): { start: () => v
   api.delete('/logs', (_req, res) => {
     logStore.clear();
     res.json({ ok: true, message: '日志已清空' });
+  });
+
+  // ── POST /api/admin/shutdown（终止服务）
+  api.post('/admin/shutdown', async (_req, res) => {
+    res.json({ ok: true, message: '服务正在终止...' });
+
+    // 异步执行终止逻辑
+    setTimeout(async () => {
+      try {
+        // 1. 终止 Bridge 子进程
+        if (bridgeManager) {
+          await bridgeManager.stop();
+          console.log('[Admin] Bridge 进程已终止');
+        }
+
+        // 2. 终止 OpenCode 进程
+        try {
+          const { spawnSync } = await import('node:child_process');
+          const processManagerPath = path.resolve(__dirname, '../../scripts/process-manager.mjs');
+          spawnSync(process.execPath, [processManagerPath, 'kill-opencode'], {
+            stdio: 'inherit',
+          });
+          console.log('[Admin] OpenCode 进程已终止');
+        } catch (e: any) {
+          console.error('[Admin] 终止 OpenCode 失败:', e.message);
+        }
+
+        // 3. 退出 Admin 进程
+        console.log('[Admin] 服务已终止');
+        process.exit(0);
+      } catch (e: any) {
+        console.error('[Admin] 终止服务失败:', e.message);
+        process.exit(1);
+      }
+    }, 500);
+  });
+
+  // ── GET /api/admin/login-timeout（获取登录超时配置）
+  api.get('/admin/login-timeout', (_req, res) => {
+    const timeoutMinutes = configStore.getLoginTimeout();
+    res.json({ timeoutMinutes });
+  });
+
+  // ── PUT /api/admin/login-timeout（设置登录超时配置）
+  api.put('/admin/login-timeout', (req, res) => {
+    const { timeoutMinutes } = req.body;
+
+    if (typeof timeoutMinutes !== 'number' || timeoutMinutes < 0) {
+      res.status(400).json({ error: '超时时间必须为非负整数' });
+      return;
+    }
+
+    configStore.setLoginTimeout(timeoutMinutes);
+    res.json({ ok: true, timeoutMinutes, message: '登录超时设置已保存' });
   });
 
   app.use('/api', api);

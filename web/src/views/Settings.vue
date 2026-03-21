@@ -22,6 +22,9 @@
           <el-button type="primary" :loading="restarting" @click="handleRestartBridge">
             重启 Bridge
           </el-button>
+          <el-button type="danger" :loading="shuttingDown" @click="handleShutdown">
+            终止服务
+          </el-button>
         </div>
       </div>
 
@@ -89,13 +92,54 @@
             升级 OpenCode
           </el-button>
           <el-button
-            :disabled="opencodeStatus?.portOpen"
+            v-if="!opencodeStatus?.portOpen"
+            type="success"
             :loading="startingOpenCode"
             @click="handleStartOpenCode"
           >
             启动 OpenCode
           </el-button>
+          <el-button
+            v-else
+            type="danger"
+            :loading="stoppingOpenCode"
+            @click="handleStopOpenCode"
+          >
+            终止 OpenCode
+          </el-button>
         </div>
+      </div>
+
+      <el-divider />
+
+      <!-- 登录设置 -->
+      <div class="section">
+        <h3>登录设置</h3>
+        <div class="status-row">
+          <span>登录超时：</span>
+          <el-input-number
+            v-model="loginTimeout"
+            :min="0"
+            :max="1440"
+            :step="10"
+            :disabled="savingTimeout"
+            style="width: 150px"
+          />
+          <span class="timeout-unit">分钟（0 表示不限制）</span>
+        </div>
+        <div class="button-row">
+          <el-button type="primary" :loading="savingTimeout" @click="handleSaveTimeout">
+            保存设置
+          </el-button>
+        </div>
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          class="timeout-tip"
+        >
+          设置登录后无操作自动退出时间，0 表示永不超时。
+        </el-alert>
       </div>
 
       <el-divider />
@@ -152,7 +196,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Setting } from '@element-plus/icons-vue'
 import { configApi } from '../api/index'
 import type { ServiceStatus, BridgeStatus, OpenCodeStatus, OpenCodeUpdateCheck } from '../api/index'
@@ -164,14 +208,18 @@ const bridgeStatus = ref<BridgeStatus | null>(null)
 const opencodeStatus = ref<OpenCodeStatus | null>(null)
 const opencodeUpdateCheck = ref<OpenCodeUpdateCheck | null>(null)
 const bridgeUpdateCheck = ref<{ hasUpdate: boolean; currentVersion: string; latestVersion: string | null } | null>(null)
+const loginTimeout = ref(0)
 
 const restarting = ref(false)
+const shuttingDown = ref(false)
 const installingOpenCode = ref(false)
 const upgradingOpenCode = ref(false)
 const startingOpenCode = ref(false)
+const stoppingOpenCode = ref(false)
 const upgrading = ref(false)
 const checkingOpenCodeUpdate = ref(false)
 const checkingBridgeUpdate = ref(false)
+const savingTimeout = ref(false)
 
 // 判断是否有 OpenCode 更新
 const hasOpenCodeUpdate = computed(() => {
@@ -188,6 +236,8 @@ async function loadStatus() {
     status.value = store.status
     bridgeStatus.value = await configApi.getBridgeStatus()
     opencodeStatus.value = await configApi.getOpenCodeStatus()
+    const timeoutRes = await configApi.getLoginTimeout()
+    loginTimeout.value = timeoutRes.timeoutMinutes
   } catch (e: any) {
     console.error('加载状态失败:', e)
   }
@@ -227,6 +277,42 @@ async function handleRestartBridge() {
     ElMessage.error('重启失败: ' + (e.response?.data?.error || e.message))
   } finally {
     restarting.value = false
+  }
+}
+
+async function handleShutdown() {
+  try {
+    await ElMessageBox.confirm(
+      '终止服务将停止 Bridge 和 OpenCode 所有进程，Web 面板也将无法访问。确定要终止吗？',
+      '警告',
+      {
+        confirmButtonText: '确定终止',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+
+    shuttingDown.value = true
+    await configApi.shutdown()
+    ElMessage.success('服务正在终止...')
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error('终止失败: ' + (e.response?.data?.error || e.message))
+    }
+  } finally {
+    shuttingDown.value = false
+  }
+}
+
+async function handleSaveTimeout() {
+  savingTimeout.value = true
+  try {
+    await configApi.setLoginTimeout(loginTimeout.value)
+    ElMessage.success('登录超时设置已保存')
+  } catch (e: any) {
+    ElMessage.error('保存失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    savingTimeout.value = false
   }
 }
 
@@ -272,6 +358,31 @@ async function handleStartOpenCode() {
     ElMessage.error('启动失败: ' + (e.response?.data?.error || e.message))
   } finally {
     startingOpenCode.value = false
+  }
+}
+
+async function handleStopOpenCode() {
+  try {
+    await ElMessageBox.confirm(
+      '确定要终止 OpenCode 服务吗？这将断开所有 OpenCode 连接。',
+      '警告',
+      {
+        confirmButtonText: '确定终止',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+
+    stoppingOpenCode.value = true
+    const result = await configApi.stopOpenCode()
+    ElMessage.success(result.message)
+    setTimeout(refreshOpenCodeStatus, 2000)
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error('终止失败: ' + (e.response?.data?.error || e.message))
+    }
+  } finally {
+    stoppingOpenCode.value = false
   }
 }
 
@@ -334,7 +445,7 @@ onMounted(async () => {
   margin-bottom: 12px;
 }
 
-.pid-info, .version-info {
+.pid-info, .version-info, .timeout-unit {
   color: #909399;
   font-size: 13px;
 }
@@ -345,7 +456,7 @@ onMounted(async () => {
   flex-wrap: wrap;
 }
 
-.upgrade-tip {
+.upgrade-tip, .timeout-tip {
   margin-top: 12px;
 }
 </style>

@@ -111,7 +111,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { DataAnalysis, Loading, Document, SwitchButton, Key } from '@element-plus/icons-vue'
@@ -128,6 +128,11 @@ const restarting = ref(false)
 const loginError = ref(false)
 const errorLogCount = ref(0)
 
+// 登录超时相关
+const loginTimeoutMinutes = ref(0)
+const lastActivityTime = ref(Date.now())
+let timeoutCheckInterval: ReturnType<typeof setInterval> | null = null
+
 async function loadAppData() {
   if (route.path === '/login' || !localStorage.getItem('admin_token')) return
   try {
@@ -136,6 +141,10 @@ async function loadAppData() {
     // 加载日志统计
     const logStats = await configApi.getLogStats()
     errorLogCount.value = logStats.error
+    // 加载登录超时配置
+    const timeoutRes = await configApi.getLoginTimeout()
+    loginTimeoutMinutes.value = timeoutRes.timeoutMinutes
+    startTimeoutChecker()
   } catch (e: any) {
     if (e.response?.status === 401) {
       loginError.value = true
@@ -144,7 +153,49 @@ async function loadAppData() {
   }
 }
 
-onMounted(loadAppData)
+// 启动超时检查器
+function startTimeoutChecker() {
+  stopTimeoutChecker()
+  if (loginTimeoutMinutes.value <= 0) return // 0 表示不限制
+
+  // 每分钟检查一次
+  timeoutCheckInterval = setInterval(() => {
+    const timeoutMs = loginTimeoutMinutes.value * 60 * 1000
+    const elapsed = Date.now() - lastActivityTime.value
+    if (elapsed >= timeoutMs) {
+      ElMessage.warning('登录已超时，请重新登录')
+      handleLogout()
+    }
+  }, 60000) // 每分钟检查一次
+}
+
+// 停止超时检查器
+function stopTimeoutChecker() {
+  if (timeoutCheckInterval) {
+    clearInterval(timeoutCheckInterval)
+    timeoutCheckInterval = null
+  }
+}
+
+// 更新活动时间
+function updateActivity() {
+  lastActivityTime.value = Date.now()
+}
+
+onMounted(() => {
+  loadAppData()
+  // 监听用户活动
+  document.addEventListener('click', updateActivity)
+  document.addEventListener('keydown', updateActivity)
+  document.addEventListener('mousemove', updateActivity)
+})
+
+onUnmounted(() => {
+  stopTimeoutChecker()
+  document.removeEventListener('click', updateActivity)
+  document.removeEventListener('keydown', updateActivity)
+  document.removeEventListener('mousemove', updateActivity)
+})
 
 // 监听路由变化，登录成功后跳转到 Dashboard 时加载数据
 watch(() => route.path, (newPath, oldPath) => {
@@ -178,6 +229,7 @@ async function confirmRestart() {
 
 function handleLogout() {
   localStorage.removeItem('admin_token')
+  stopTimeoutChecker()
   router.push('/login')
 }
 

@@ -810,8 +810,68 @@ function startBackgroundProcess() {
   run(process.execPath, [path.join(scriptDir, 'start.mjs')], '启动后台进程');
 }
 
-function stopBackgroundProcess() {
-  run(process.execPath, [path.join(scriptDir, 'stop.mjs')], '停止后台进程', { allowFailure: true });
+async function stopBackgroundProcess(rl) {
+  // 检测是否有 OpenCode 进程
+  const opencodePids = findOpenCodeProcesses();
+
+  if (opencodePids.length > 0) {
+    console.log(`[deploy] 检测到 ${opencodePids.length} 个 OpenCode 进程: ${opencodePids.join(', ')}`);
+    const answer = await rl.question('是否同时终止 OpenCode 进程? (y/N): ');
+    const shouldStopOpenCode = answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes';
+
+    if (shouldStopOpenCode) {
+      run(process.execPath, [path.join(scriptDir, 'stop.mjs'), '--with-opencode'], '停止后台进程（含 OpenCode）', { allowFailure: true });
+    } else {
+      run(process.execPath, [path.join(scriptDir, 'stop.mjs')], '停止后台进程', { allowFailure: true });
+    }
+  } else {
+    run(process.execPath, [path.join(scriptDir, 'stop.mjs')], '停止后台进程', { allowFailure: true });
+  }
+}
+
+function findOpenCodeProcesses() {
+  const pids = [];
+  const currentPid = process.pid;
+
+  if (isLinux() || process.platform === 'darwin') {
+    const result = spawnSync('ps', ['aux'], { encoding: 'utf-8' });
+    if (!result.error && result.status === 0) {
+      const lines = result.stdout.split('\n').filter(line => line.trim());
+      for (const line of lines) {
+        const parts = line.split(/\s+/);
+        if (parts.length < 11) continue;
+        const pid = parseInt(parts[1], 10);
+        if (isNaN(pid) || pid === currentPid || pid === 1) continue;
+        const command = parts.slice(10).join(' ');
+        // 匹配 opencode 进程（排除 bridge 自身）
+        if (/\bopencode\b/.test(command) && !command.includes('feishu-opencode-bridge')) {
+          pids.push(pid);
+        }
+      }
+    }
+  } else if (isWindows()) {
+    const result = spawnSync('tasklist', ['/FO', 'CSV', '/NH'], { encoding: 'utf-8' });
+    if (!result.error && result.status === 0) {
+      const lines = result.stdout.split('\r\n').filter(line => line.trim());
+      for (const line of lines) {
+        const match = line.match(/"node\.exe","(\d+)"/);
+        if (match) {
+          const pid = parseInt(match[1], 10);
+          if (pid === currentPid) continue;
+          // Windows 下检查命令行
+          const wmicResult = spawnSync('wmic', ['process', 'where', `ProcessId=${pid}`, 'get', 'CommandLine', '/value'], { encoding: 'utf-8' });
+          if (!wmicResult.error && wmicResult.status === 0) {
+            const cmd = wmicResult.stdout || '';
+            if (/\bopencode\b/.test(cmd) && !cmd.includes('feishu-opencode-bridge')) {
+              pids.push(pid);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return pids;
 }
 
 function uninstallBackgroundProcess() {
@@ -1138,7 +1198,7 @@ async function showMenu() {
               startBackgroundProcess();
               break;
             case '3':
-              stopBackgroundProcess();
+              await stopBackgroundProcess(rl);
               break;
             case '4':
               await installSystemdService();
@@ -1169,7 +1229,7 @@ async function showMenu() {
               startBackgroundProcess();
               break;
             case '3':
-              stopBackgroundProcess();
+              await stopBackgroundProcess(rl);
               break;
             case '4':
               await resetAdminPassword();
@@ -1221,9 +1281,15 @@ async function main() {
       case 'start':
         startBackgroundProcess();
         break;
-      case 'stop':
-        stopBackgroundProcess();
+      case 'stop': {
+        const withOpenCode = process.argv.includes('--with-opencode');
+        if (withOpenCode) {
+          run(process.execPath, [path.join(scriptDir, 'stop.mjs'), '--with-opencode'], '停止后台进程（含 OpenCode）', { allowFailure: true });
+        } else {
+          run(process.execPath, [path.join(scriptDir, 'stop.mjs')], '停止后台进程', { allowFailure: true });
+        }
         break;
+      }
       case 'service-install':
         await installSystemdService();
         break;

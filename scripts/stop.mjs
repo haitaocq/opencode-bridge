@@ -5,6 +5,7 @@
  *
  * 功能:
  * - 调用 process-manager.mjs 终止 Bridge 进程
+ * - 调用 process-manager.mjs 终止 OpenCode 进程（可选）
  * - 清理 PID 文件
  */
 
@@ -21,7 +22,21 @@ const pidFile = path.join(logsDir, 'bridge.pid');
 const processManagerPath = path.join(rootDir, 'scripts', 'process-manager.mjs');
 
 function main() {
-  // 调用进程管理工具终止旧进程
+  const args = process.argv.slice(2);
+  const stopOpenCode = args.includes('--with-opencode');
+
+  // 先终止 OpenCode 进程（如果指定）
+  if (stopOpenCode) {
+    console.log('[stop] 正在终止 OpenCode 进程...');
+    const opencodeResult = spawnSync(process.execPath, [processManagerPath, 'kill-opencode'], {
+      stdio: 'inherit',
+    });
+    if (opencodeResult.error) {
+      console.error('[stop] 终止 OpenCode 进程失败:', opencodeResult.error.message);
+    }
+  }
+
+  // 调用进程管理工具终止 Bridge 进程
   const result = spawnSync(process.execPath, [processManagerPath, 'kill-bridge'], {
     stdio: 'inherit',
   });
