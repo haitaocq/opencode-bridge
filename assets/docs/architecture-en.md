@@ -1,4 +1,4 @@
-# OpenCode Bridge Architecture (v2.9.3-beta)
+# OpenCode Bridge Architecture (v2.9.5-beta)
 
 This document describes the current running architecture, focusing on platform integration, routing scheduling, event closure, directory consistency, and maintainability strategies.
 

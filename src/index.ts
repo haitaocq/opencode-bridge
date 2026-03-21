@@ -1666,7 +1666,7 @@ async function main() {
       password: adminPassword,
       cronManager: getRuntimeCronManager() ?? undefined,
       startedAt: new Date(),
-      version: '2.9.3-beta',
+      version: '2.9.5-beta',
     });
     adminServer.start();
   }
