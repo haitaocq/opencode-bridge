@@ -192,6 +192,7 @@ async function defaultStartProcess(): Promise<void> {
         detached: true,
         stdio: 'ignore',
         shell: isWindows,
+        windowsHide: isWindows,
       });
       child.unref();
       setTimeout(() => resolve(), 500);

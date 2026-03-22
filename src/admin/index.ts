@@ -8,6 +8,9 @@
  * 4. 提供版本升级 API
  */
 
+// 首先加载配置（包含 dotenv 初始化）
+import '../config.js';
+
 import { createAdminServer } from './admin-server.js';
 import { bridgeManager, type BridgeStatus } from './bridge-manager.js';
 import { configStore } from '../store/config-store.js';

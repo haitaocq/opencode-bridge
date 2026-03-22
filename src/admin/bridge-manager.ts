@@ -46,12 +46,14 @@ export class BridgeManager {
     this.restarting = false;
 
     const bridgeEntry = path.resolve(__dirname, '../index.js');
+    const isWindows = process.platform === 'win32';
 
     return new Promise((resolve) => {
       try {
         this.child = spawn(process.execPath, [bridgeEntry], {
           stdio: ['ignore', 'inherit', 'inherit'],
           detached: false,
+          windowsHide: isWindows,
           env: {
             ...process.env,
             BRIDGE_SPAWNED_BY_ADMIN: '1',

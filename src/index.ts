@@ -198,6 +198,7 @@ export const createRescueOrchestrator = (
                 detached: true,
                 stdio: 'ignore',
                 shell: isWindows,
+                windowsHide: isWindows,
               });
               child.unref();
               setTimeout(() => resolve(), 2000);
@@ -547,6 +548,7 @@ async function main() {
         stdio: 'ignore',
         detached: true,
         shell: isWindows,
+        windowsHide: isWindows,
       });
 
       opencodeChildProcess.on('error', (err) => {

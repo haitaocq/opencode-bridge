@@ -883,13 +883,10 @@ function findOpenCodeProcesses() {
         if (match) {
           const pid = parseInt(match[1], 10);
           if (pid === currentPid) continue;
-          // Windows 下检查命令行
-          const wmicResult = spawnSync('wmic', ['process', 'where', `ProcessId=${pid}`, 'get', 'CommandLine', '/value'], { encoding: 'utf-8' });
-          if (!wmicResult.error && wmicResult.status === 0) {
-            const cmd = wmicResult.stdout || '';
-            if (/\bopencode\b/.test(cmd) && !cmd.includes('feishu-opencode-bridge')) {
-              pids.push(pid);
-            }
+          // Windows 下使用 PowerShell 获取命令行（兼容 Windows 11）
+          const cmd = getProcessCommandLine(pid);
+          if (cmd && /\bopencode\b/.test(cmd) && !cmd.includes('feishu-opencode-bridge')) {
+            pids.push(pid);
           }
         }
       }
@@ -897,6 +894,44 @@ function findOpenCodeProcesses() {
   }
 
   return pids;
+}
+
+function getProcessCommandLine(pid) {
+  // 优先使用 PowerShell（Windows 11 兼容）
+  const psResult = spawnSync('powershell', [
+    '-NoProfile',
+    '-Command',
+    `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`
+  ], {
+    encoding: 'utf-8',
+    timeout: 5000,
+  });
+
+  if (!psResult.error && psResult.status === 0) {
+    const cmd = (psResult.stdout || '').trim();
+    if (cmd) {
+      return cmd;
+    }
+  }
+
+  // 回退到 wmic（旧版 Windows）
+  const wmicResult = spawnSync('wmic', [
+    'process', 'where', `ProcessId=${pid}`,
+    'get', 'CommandLine', '/value'
+  ], {
+    encoding: 'utf-8',
+    timeout: 5000,
+  });
+
+  if (!wmicResult.error && wmicResult.status === 0) {
+    const output = wmicResult.stdout || '';
+    const match = output.match(/CommandLine=(.+)/);
+    if (match) {
+      return match[1].trim();
+    }
+  }
+
+  return null;
 }
 
 function uninstallBackgroundProcess() {

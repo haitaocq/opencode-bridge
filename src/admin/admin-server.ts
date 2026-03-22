@@ -609,6 +609,7 @@ export function createAdminServer(options: AdminServerOptions): { start: () => v
         detached: true,
         stdio: 'ignore',
         shell: isWindows,
+        windowsHide: isWindows,
       });
 
       res.json({ ok: true, message: 'OpenCode 已启动' });
