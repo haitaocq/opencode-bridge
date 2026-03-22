@@ -363,6 +363,23 @@ export function createAdminServer(options: AdminServerOptions): { start: () => v
     });
   });
 
+  // ── POST /api/admin/stop-bridge（仅停止 Bridge 进程）
+  api.post('/admin/stop-bridge', async (_req, res) => {
+    if (!bridgeManager) {
+      res.status(503).json({ error: 'Bridge 管理器未初始化' });
+      return;
+    }
+
+    res.json({ ok: true, message: 'Bridge 正在终止...' });
+
+    // 异步执行终止逻辑
+    bridgeManager.stop().then(() => {
+      console.log('[Admin] Bridge 进程已终止（Web 面板保持运行）');
+    }).catch((e: any) => {
+      console.error('[Admin] Bridge 终止失败:', e.message);
+    });
+  });
+
   // ── GET /api/admin/bridge
   api.get('/admin/bridge', (_req, res) => {
     if (!bridgeManager) {

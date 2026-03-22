@@ -33,26 +33,40 @@ function main() {
   // 先终止 OpenCode 进程（如果指定）
   if (stopOpenCode) {
     console.log('[stop] 正在终止 OpenCode 进程...');
-    const opencodeResult = spawnSync(process.execPath, [processManagerPath, 'kill-opencode'], {
-      stdio: 'inherit',
-      windowsHide: isWindows(),
-    });
-    if (opencodeResult.error) {
-      console.error('[stop] 终止 OpenCode 进程失败:', opencodeResult.error.message);
+    try {
+      const opencodeResult = spawnSync(process.execPath, [processManagerPath, 'kill-opencode'], {
+        stdio: 'inherit',
+        windowsHide: isWindows(),
+        timeout: 30000, // 30 秒超时
+      });
+      if (opencodeResult.error) {
+        console.error('[stop] 终止 OpenCode 进程失败:', opencodeResult.error.message);
+      }
+    } catch (e) {
+      console.error('[stop] 终止 OpenCode 进程异常:', e.message);
     }
+    console.log('[stop] OpenCode 进程清理完成');
   }
 
   // 调用进程管理工具终止 Bridge 进程
-  const result = spawnSync(process.execPath, [processManagerPath, 'kill-bridge'], {
-    stdio: 'inherit',
-    windowsHide: isWindows(),
-  });
+  console.log('[stop] 正在终止 Bridge 进程...');
+  try {
+    const result = spawnSync(process.execPath, [processManagerPath, 'kill-bridge'], {
+      stdio: 'inherit',
+      windowsHide: isWindows(),
+      timeout: 30000, // 30 秒超时
+    });
 
-  // 清理 PID 文件
-  fs.rmSync(pidFile, { force: true });
+    // 清理 PID 文件
+    fs.rmSync(pidFile, { force: true });
 
-  if (result.error) {
-    console.error('[stop] 执行失败:', result.error.message);
+    if (result.error) {
+      console.error('[stop] 执行失败:', result.error.message);
+      process.exit(1);
+    }
+  } catch (e) {
+    console.error('[stop] 执行异常:', e.message);
+    fs.rmSync(pidFile, { force: true });
     process.exit(1);
   }
 }

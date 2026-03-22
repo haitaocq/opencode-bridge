@@ -145,6 +145,8 @@ function run(command, args, title, options = {}) {
       cwd: rootDir,
       stdio: options.capture ? 'pipe' : 'inherit',
       encoding: options.capture ? 'utf-8' : undefined,
+      windowsHide: isWindows(),
+      timeout: options.timeout || 300000, // 默认 5 分钟超时
     });
 
     if (result.error) {

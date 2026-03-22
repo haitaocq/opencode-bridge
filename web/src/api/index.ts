@@ -355,6 +355,11 @@ export const configApi = {
     return res.data
   },
 
+  async stopBridge(): Promise<{ ok: boolean; message: string }> {
+    const res = await http.post<{ ok: boolean; message: string }>('/admin/stop-bridge')
+    return res.data
+  },
+
   async shutdown(): Promise<{ ok: boolean; message: string }> {
     const res = await http.post<{ ok: boolean; message: string }>('/admin/shutdown')
     return res.data

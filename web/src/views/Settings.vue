@@ -191,6 +191,33 @@
         </el-alert>
       </div>
     </el-card>
+
+    <!-- 终止服务确认对话框 -->
+    <el-dialog
+      v-model="showShutdownDialog"
+      title="警告"
+      width="420px"
+    >
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      >
+        终止服务将停止 Bridge 和 OpenCode 所有进程，Web 面板也将无法访问。
+      </el-alert>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="showShutdownDialog = false">取消</el-button>
+          <el-button type="warning" @click="handleStopBridgeOnly">
+            仅关闭 Bridge
+          </el-button>
+          <el-button type="danger" @click="handleShutdownAll">
+            终止所有服务
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -212,6 +239,7 @@ const loginTimeout = ref(0)
 
 const restarting = ref(false)
 const shuttingDown = ref(false)
+const showShutdownDialog = ref(false)
 const installingOpenCode = ref(false)
 const upgradingOpenCode = ref(false)
 const startingOpenCode = ref(false)
@@ -280,25 +308,32 @@ async function handleRestartBridge() {
   }
 }
 
-async function handleShutdown() {
-  try {
-    await ElMessageBox.confirm(
-      '终止服务将停止 Bridge 和 OpenCode 所有进程，Web 面板也将无法访问。确定要终止吗？',
-      '警告',
-      {
-        confirmButtonText: '确定终止',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    )
+function handleShutdown() {
+  showShutdownDialog.value = true
+}
 
-    shuttingDown.value = true
+async function handleStopBridgeOnly() {
+  showShutdownDialog.value = false
+  shuttingDown.value = true
+  try {
+    await configApi.stopBridge()
+    ElMessage.success('Bridge 正在终止...')
+    setTimeout(loadStatus, 2000)
+  } catch (e: any) {
+    ElMessage.error('终止 Bridge 失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    shuttingDown.value = false
+  }
+}
+
+async function handleShutdownAll() {
+  showShutdownDialog.value = false
+  shuttingDown.value = true
+  try {
     await configApi.shutdown()
     ElMessage.success('服务正在终止...')
   } catch (e: any) {
-    if (e !== 'cancel') {
-      ElMessage.error('终止失败: ' + (e.response?.data?.error || e.message))
-    }
+    ElMessage.error('终止失败: ' + (e.response?.data?.error || e.message))
   } finally {
     shuttingDown.value = false
   }
@@ -458,5 +493,11 @@ onMounted(async () => {
 
 .upgrade-tip, .timeout-tip {
   margin-top: 12px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 </style>
