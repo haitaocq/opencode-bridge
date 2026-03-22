@@ -11,6 +11,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -21,6 +22,10 @@ const logsDir = path.join(rootDir, 'logs');
 const pidFile = path.join(logsDir, 'bridge.pid');
 const processManagerPath = path.join(rootDir, 'scripts', 'process-manager.mjs');
 
+function isWindows() {
+  return process.platform === 'win32';
+}
+
 function main() {
   const args = process.argv.slice(2);
   const stopOpenCode = args.includes('--with-opencode');
@@ -30,6 +35,7 @@ function main() {
     console.log('[stop] 正在终止 OpenCode 进程...');
     const opencodeResult = spawnSync(process.execPath, [processManagerPath, 'kill-opencode'], {
       stdio: 'inherit',
+      windowsHide: isWindows(),
     });
     if (opencodeResult.error) {
       console.error('[stop] 终止 OpenCode 进程失败:', opencodeResult.error.message);
@@ -39,6 +45,7 @@ function main() {
   // 调用进程管理工具终止 Bridge 进程
   const result = spawnSync(process.execPath, [processManagerPath, 'kill-bridge'], {
     stdio: 'inherit',
+    windowsHide: isWindows(),
   });
 
   // 清理 PID 文件

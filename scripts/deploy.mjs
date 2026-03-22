@@ -875,7 +875,7 @@ function findOpenCodeProcesses() {
       }
     }
   } else if (isWindows()) {
-    const result = spawnSync('tasklist', ['/FO', 'CSV', '/NH'], { encoding: 'utf-8' });
+    const result = spawnSync('tasklist', ['/FO', 'CSV', '/NH'], { encoding: 'utf-8', windowsHide: true });
     if (!result.error && result.status === 0) {
       const lines = result.stdout.split('\r\n').filter(line => line.trim());
       for (const line of lines) {
@@ -905,6 +905,7 @@ function getProcessCommandLine(pid) {
   ], {
     encoding: 'utf-8',
     timeout: 5000,
+    windowsHide: true,
   });
 
   if (!psResult.error && psResult.status === 0) {
@@ -921,6 +922,7 @@ function getProcessCommandLine(pid) {
   ], {
     encoding: 'utf-8',
     timeout: 5000,
+    windowsHide: true,
   });
 
   if (!wmicResult.error && wmicResult.status === 0) {

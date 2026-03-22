@@ -70,6 +70,7 @@ function runNpm(args) {
     const result = spawnSync(variant.command, variant.args, {
       cwd: rootDir,
       stdio: 'inherit',
+      windowsHide: isWindows(),
     });
 
     if (result.error) {
@@ -151,6 +152,7 @@ function main() {
   const cleanupResult = spawnSync(process.execPath, [processManagerPath, 'kill-bridge'], {
     stdio: 'pipe',
     encoding: 'utf-8',
+    windowsHide: isWindows(),
   });
 
   if (cleanupResult.stdout) {

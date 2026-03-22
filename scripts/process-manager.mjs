@@ -39,6 +39,7 @@ function findBridgeProcesses(excludeSelf = false, excludePid = null) {
     // Windows: 使用 tasklist
     const result = spawnSync('tasklist', ['/FO', 'CSV', '/NH'], {
       encoding: 'utf-8',
+      windowsHide: true,
     });
 
     if (!result.error && result.status === 0) {
@@ -103,6 +104,7 @@ function findOpenCodeProcesses(excludeSelf = false, excludePid = null) {
   if (isWindows()) {
     const result = spawnSync('tasklist', ['/FO', 'CSV', '/NH'], {
       encoding: 'utf-8',
+      windowsHide: true,
     });
 
     if (!result.error && result.status === 0) {
@@ -154,21 +156,25 @@ function findOpenCodeProcesses(excludeSelf = false, excludePid = null) {
 // ==================== 进程判断逻辑 ====================
 
 function isBridgeCommand(command) {
+  // 统一路径分隔符（Windows 使用反斜杠）
+  const normalizedCmd = command.replace(/\\/g, '/');
   // 匹配生产模式: dist/index.js 或 dist/admin/index.js
   // 匹配开发模式: tsx watch src/index.ts 或 tsx src/index.ts
   // 注意：不能只匹配项目名，因为其他脚本也在同一目录下运行
-  return command.includes('dist/index.js') ||
-         command.includes('dist/admin/index.js') ||
-         /tsx\s+(?:watch\s+)?src\/index\.ts/.test(command);
+  return normalizedCmd.includes('dist/index.js') ||
+         normalizedCmd.includes('dist/admin/index.js') ||
+         /tsx\s+(?:watch\s+)?src\/index\.ts/.test(normalizedCmd);
 }
 
 function isOpenCodeCommand(command) {
+  // 统一路径分隔符
+  const normalizedCmd = command.replace(/\\/g, '/');
   // 排除 bridge 进程本身
-  if (isBridgeCommand(command)) {
+  if (isBridgeCommand(normalizedCmd)) {
     return false;
   }
   // 精确匹配 opencode 命令，避免项目名干扰
-  return /\bopencode\b/.test(command) || command.includes('opencode-cli');
+  return /\bopencode\b/.test(normalizedCmd) || normalizedCmd.includes('opencode-cli');
 }
 
 function getProcessCommandLine(pid) {
@@ -184,6 +190,7 @@ function getProcessCommandLine(pid) {
   ], {
     encoding: 'utf-8',
     timeout: 5000,
+    windowsHide: true,
   });
 
   if (!psResult.error && psResult.status === 0) {
@@ -200,6 +207,7 @@ function getProcessCommandLine(pid) {
   ], {
     encoding: 'utf-8',
     timeout: 5000,
+    windowsHide: true,
   });
 
   if (!wmicResult.error && wmicResult.status === 0) {
@@ -252,6 +260,7 @@ function stopProcesses(pids, force = false) {
 
       const result = spawnSync('taskkill', args, {
         encoding: 'utf-8',
+        windowsHide: true,
       });
 
       stopped = !result.error && result.status === 0;
