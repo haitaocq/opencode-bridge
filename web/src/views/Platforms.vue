@@ -2,7 +2,7 @@
   <div class="page">
     <div class="page-header">
       <h2>平台接入配置</h2>
-      <p class="desc">配置飞书、Discord、企业微信、Telegram、QQ 与 WhatsApp 机器人的核心凭证和接入参数</p>
+      <p class="desc">配置飞书、Discord、企业微信、个人微信、Telegram、QQ 与 WhatsApp 机器人的核心凭证和接入参数</p>
     </div>
 
     <el-form :model="form" label-position="top" @submit.prevent>
@@ -128,6 +128,81 @@
             </el-form-item>
           </el-col>
         </el-row>
+      </el-card>
+
+      <!-- 个人微信配置 -->
+      <el-card class="config-card">
+        <template #header>
+          <div class="card-header-row">
+            <span class="card-title">💬 个人微信配置 <el-tag size="small" type="info">可选</el-tag></span>
+            <div class="inline-switch">
+              <span>启用个人微信</span>
+              <el-switch v-model="weixinEnabled"
+                active-text="开启" inactive-text="关闭"
+                @change="form.WEIXIN_ENABLED = weixinEnabled ? 'true' : 'false'" />
+            </div>
+          </div>
+        </template>
+
+        <el-alert type="warning" :closable="false" style="margin-bottom: 16px" v-if="weixinEnabled">
+          个人微信基于腾讯 OpenClaw 协议，仅支持私聊，不支持群聊。请使用专用测试账号。
+        </el-alert>
+
+        <div v-if="weixinEnabled">
+          <!-- 账号列表 -->
+          <div class="weixin-accounts" v-if="weixinAccounts.length > 0">
+            <div class="account-item" v-for="acc in weixinAccounts" :key="acc.id">
+              <div class="account-info">
+                <el-avatar :size="36" :src="acc.avatar">
+                  {{ (acc.nickname || acc.wxid || '?')[0] }}
+                </el-avatar>
+                <div class="account-meta">
+                  <div class="nickname">{{ acc.nickname || acc.wxid }}</div>
+                  <div class="wxid">ID: {{ acc.wxid }}</div>
+                </div>
+              </div>
+              <div class="account-actions">
+                <el-tag :type="acc.enabled ? 'success' : 'info'" size="small">
+                  {{ acc.enabled ? '已启用' : '已禁用' }}
+                </el-tag>
+                <el-button size="small" @click="toggleWeixinAccount(acc.id, !acc.enabled)">
+                  {{ acc.enabled ? '禁用' : '启用' }}
+                </el-button>
+                <el-popconfirm title="确定删除此账号？" @confirm="deleteWeixinAccount(acc.id)">
+                  <template #reference>
+                    <el-button size="small" type="danger">删除</el-button>
+                  </template>
+                </el-popconfirm>
+              </div>
+            </div>
+          </div>
+
+          <el-empty v-else description="暂无已登录账号" :image-size="60" />
+
+          <!-- 扫码登录 -->
+          <div class="qr-login-section">
+            <el-button type="primary" @click="startWeixinLogin" :loading="weixinLoginLoading">
+              {{ weixinLoginLoading ? '获取二维码中...' : '扫码登录新账号' }}
+            </el-button>
+
+            <el-dialog v-model="weixinQrDialogVisible" title="微信扫码登录" width="360px" :close-on-click-modal="false">
+              <div class="qr-dialog-content">
+                <div class="qr-image" v-if="weixinQrImage">
+                  <img :src="weixinQrImage" alt="QR Code" />
+                </div>
+                <el-skeleton v-else animated>
+                  <template #template>
+                    <el-skeleton-item variant="image" style="width: 200px; height: 200px" />
+                  </template>
+                </el-skeleton>
+                <div class="qr-status">
+                  <el-tag :type="weixinQrStatusType">{{ weixinQrStatusText }}</el-tag>
+                </div>
+                <el-button @click="cancelWeixinLogin" v-if="weixinLoginLoading">取消</el-button>
+              </div>
+            </el-dialog>
+          </div>
+        </div>
       </el-card>
 
       <!-- Telegram 配置 -->
@@ -314,6 +389,7 @@
                 <el-option label="飞书 (feishu)" value="feishu" />
                 <el-option label="Discord (discord)" value="discord" />
                 <el-option label="企业微信 (wecom)" value="wecom" />
+                <el-option label="个人微信 (weixin)" value="weixin" />
                 <el-option label="Telegram (telegram)" value="telegram" />
                 <el-option label="QQ (qq)" value="qq" />
                 <el-option label="WhatsApp (whatsapp)" value="whatsapp" />
@@ -359,18 +435,52 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useConfigStore } from '../stores/config'
+import { weixinApi, type WeixinAccount } from '../api'
 
 const store = useConfigStore()
 const saving = ref(false)
 const feishuEnabled = ref(false)
 const discordEnabled = ref(false)
 const wecomEnabled = ref(false)
+const weixinEnabled = ref(false)
 const telegramEnabled = ref(false)
 const qqEnabled = ref(false)
 const whatsappEnabled = ref(false)
 const groupRequireMention = ref(false)
 const enabledPlatforms = ref<string[]>([])
 const allowedUsers = ref<string[]>([])
+
+// 微信账号管理
+const weixinAccounts = ref<WeixinAccount[]>([])
+const weixinLoginLoading = ref(false)
+const weixinQrDialogVisible = ref(false)
+const weixinQrImage = ref('')
+const weixinQrSessionId = ref('')
+const weixinQrStatus = ref<'waiting' | 'scanned' | 'confirmed' | 'expired' | 'cancelled' | 'error'>('waiting')
+
+const weixinQrStatusType = computed(() => {
+  switch (weixinQrStatus.value) {
+    case 'waiting': return 'info'
+    case 'scanned': return 'warning'
+    case 'confirmed': return 'success'
+    case 'expired': return 'danger'
+    case 'cancelled': return 'info'
+    case 'error': return 'danger'
+    default: return 'info'
+  }
+})
+
+const weixinQrStatusText = computed(() => {
+  switch (weixinQrStatus.value) {
+    case 'waiting': return '请扫描二维码'
+    case 'scanned': return '已扫描，请在手机确认'
+    case 'confirmed': return '登录成功'
+    case 'expired': return '二维码已过期'
+    case 'cancelled': return '已取消'
+    case 'error': return '登录失败'
+    default: return '未知状态'
+  }
+})
 
 // 从 store 获取会话数据（启动时已加载）
 const sessions = computed(() => {
@@ -382,6 +492,7 @@ const sessions = computed(() => {
     telegram: list.filter(s => s.platform === 'telegram'),
     qq: list.filter(s => s.platform === 'qq'),
     whatsapp: list.filter(s => s.platform === 'whatsapp'),
+    weixin: list.filter(s => s.platform === 'weixin'),
   }
 })
 
@@ -436,6 +547,15 @@ const sessionGroups = computed(() => {
     groups.push({
       label: 'WhatsApp 会话',
       options: sessions.value.whatsapp.map(s => ({
+        label: `${s.title} (${s.chatId})`,
+        value: s.chatId || '',
+      })),
+    })
+  }
+  if (sessions.value.weixin.length > 0) {
+    groups.push({
+      label: '微信会话',
+      options: sessions.value.weixin.map(s => ({
         label: `${s.title} (${s.chatId})`,
         value: s.chatId || '',
       })),
@@ -514,6 +634,7 @@ const form = reactive({
   WECOM_ENABLED: 'false',
   WECOM_BOT_ID: '',
   WECOM_SECRET: '',
+  WEIXIN_ENABLED: 'false',
   TELEGRAM_ENABLED: 'false',
   TELEGRAM_BOT_TOKEN: '',
   QQ_ENABLED: 'false',
@@ -533,8 +654,6 @@ const form = reactive({
   GROUP_REQUIRE_MENTION: 'false',
 })
 
-onMounted(() => syncFromStore())
-
 watch(() => store.settings, () => syncFromStore(), { deep: true })
 
 function syncFromStore() {
@@ -552,6 +671,7 @@ function syncFromStore() {
     WECOM_ENABLED: s.WECOM_ENABLED || 'false',
     WECOM_BOT_ID: s.WECOM_BOT_ID || '',
     WECOM_SECRET: s.WECOM_SECRET || '',
+    WEIXIN_ENABLED: s.WEIXIN_ENABLED || 'false',
     TELEGRAM_ENABLED: s.TELEGRAM_ENABLED || 'false',
     TELEGRAM_BOT_TOKEN: s.TELEGRAM_BOT_TOKEN || '',
     QQ_ENABLED: s.QQ_ENABLED || 'false',
@@ -573,6 +693,7 @@ function syncFromStore() {
   feishuEnabled.value = form.FEISHU_ENABLED === 'true'
   discordEnabled.value = form.DISCORD_ENABLED === 'true'
   wecomEnabled.value = form.WECOM_ENABLED === 'true'
+  weixinEnabled.value = form.WEIXIN_ENABLED === 'true'
   telegramEnabled.value = form.TELEGRAM_ENABLED === 'true'
   qqEnabled.value = form.QQ_ENABLED === 'true'
   whatsappEnabled.value = form.WHATSAPP_ENABLED === 'true'
@@ -598,6 +719,7 @@ async function handleSave() {
   const hasFeishu = feishuEnabled.value && form.FEISHU_APP_ID && form.FEISHU_APP_SECRET
   const hasDiscord = discordEnabled.value && form.DISCORD_TOKEN
   const hasWecom = wecomEnabled.value && form.WECOM_BOT_ID && form.WECOM_SECRET
+  const hasWeixin = weixinEnabled.value && weixinAccounts.value.some(a => a.enabled)
   const hasTelegram = telegramEnabled.value && form.TELEGRAM_BOT_TOKEN
   const hasQQ = qqEnabled.value && (
     (form.QQ_PROTOCOL === 'official' && form.QQ_APP_ID && form.QQ_SECRET) ||
@@ -608,7 +730,7 @@ async function handleSave() {
     (form.WHATSAPP_MODE === 'personal' && form.WHATSAPP_SESSION_PATH)
   )
 
-  if (!hasFeishu && !hasDiscord && !hasWecom && !hasTelegram && !hasQQ && !hasWhatsApp) {
+  if (!hasFeishu && !hasDiscord && !hasWecom && !hasWeixin && !hasTelegram && !hasQQ && !hasWhatsApp) {
     ElMessage.warning('建议至少启用并配置一个平台')
   }
 
@@ -628,6 +750,111 @@ async function handleSave() {
     saving.value = false
   }
 }
+
+// 微信账号管理
+async function loadWeixinAccounts() {
+  try {
+    weixinAccounts.value = await weixinApi.getAccounts()
+  } catch (e) {
+    console.error('加载微信账号失败', e)
+  }
+}
+
+async function toggleWeixinAccount(id: string, enabled: boolean) {
+  try {
+    await weixinApi.toggleAccount(id, enabled)
+    await loadWeixinAccounts()
+    ElMessage.success(enabled ? '账号已启用' : '账号已禁用')
+  } catch (e) {
+    ElMessage.error('操作失败')
+  }
+}
+
+async function deleteWeixinAccount(id: string) {
+  try {
+    await weixinApi.deleteAccount(id)
+    await loadWeixinAccounts()
+    ElMessage.success('账号已删除')
+  } catch (e) {
+    ElMessage.error('删除失败')
+  }
+}
+
+let weixinPollTimer: ReturnType<typeof setInterval> | null = null
+let weixinPolling = false // 防止并发轮询
+
+async function startWeixinLogin() {
+  weixinLoginLoading.value = true
+  weixinPolling = false
+  try {
+    const result = await weixinApi.startLogin()
+    weixinQrSessionId.value = result.sessionId
+    weixinQrImage.value = result.qrImage
+    weixinQrStatus.value = 'waiting'
+    weixinQrDialogVisible.value = true
+
+    // 串行轮询登录状态（避免请求堆积）
+    const doPoll = async () => {
+      if (weixinPolling) return
+      weixinPolling = true
+      try {
+        const status = await weixinApi.waitLogin(weixinQrSessionId.value)
+        weixinQrStatus.value = status.status
+        if (status.status === 'confirmed' && status.account) {
+          stopWeixinPoll()
+          weixinQrDialogVisible.value = false
+          await loadWeixinAccounts()
+          ElMessage.success('登录成功')
+        } else if (status.status === 'expired' || status.status === 'error' || status.status === 'cancelled') {
+          stopWeixinPoll()
+          if (status.error) {
+            ElMessage.error(status.error)
+          }
+        }
+      } catch (e) {
+        console.error('轮询登录状态失败', e)
+      } finally {
+        weixinPolling = false
+      }
+    }
+
+    // 启动轮询（3秒间隔，串行执行）
+    weixinPollTimer = setInterval(doPoll, 3000)
+    // 立即执行一次
+    doPoll()
+  } catch (e) {
+    ElMessage.error('获取二维码失败')
+  } finally {
+    weixinLoginLoading.value = false
+  }
+}
+
+function stopWeixinPoll() {
+  if (weixinPollTimer) {
+    clearInterval(weixinPollTimer)
+    weixinPollTimer = null
+  }
+  weixinPolling = false
+}
+
+async function cancelWeixinLogin() {
+  stopWeixinPoll()
+  if (weixinQrSessionId.value) {
+    try {
+      await weixinApi.cancelLogin(weixinQrSessionId.value)
+    } catch (e) {
+      // ignore
+    }
+  }
+  weixinQrDialogVisible.value = false
+  weixinQrStatus.value = 'waiting'
+}
+
+// 初始化加载微信账号
+onMounted(() => {
+  syncFromStore()
+  loadWeixinAccounts()
+})
 </script>
 
 <style scoped>
@@ -641,4 +868,24 @@ async function handleSave() {
 .inline-switch { display: flex; align-items: center; gap: 10px; }
 .field-tip { font-size: 12px; color: #999; margin-top: 4px; line-height: 1.4; }
 .form-actions { text-align: right; margin-top: 8px; }
+
+.weixin-accounts { margin-bottom: 16px; }
+.account-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.account-info { display: flex; align-items: center; gap: 12px; }
+.account-meta { display: flex; flex-direction: column; }
+.nickname { font-weight: 500; font-size: 14px; }
+.wxid { font-size: 12px; color: #909399; }
+.account-actions { display: flex; align-items: center; gap: 8px; }
+.qr-login-section { margin-top: 16px; }
+.qr-dialog-content { text-align: center; }
+.qr-image img { max-width: 200px; border-radius: 8px; }
+.qr-status { margin: 16px 0; }
 </style>

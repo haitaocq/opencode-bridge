@@ -25,6 +25,8 @@ export interface BridgeSettings {
   WECOM_ENABLED?: string
   WECOM_BOT_ID?: string
   WECOM_SECRET?: string
+  // Weixin
+  WEIXIN_ENABLED?: string
   // Telegram
   TELEGRAM_ENABLED?: string
   TELEGRAM_BOT_TOKEN?: string
@@ -187,6 +189,56 @@ export interface LogStats {
   info: number
   warn: number
   error: number
+}
+
+export interface WeixinAccount {
+  id: string
+  wxid: string
+  nickname?: string
+  avatar?: string
+  enabled: boolean
+  createdAt: number
+  lastUsedAt?: number
+}
+
+export interface WeixinLoginSession {
+  sessionId: string
+  status: 'waiting' | 'scanned' | 'confirmed' | 'expired' | 'cancelled' | 'error'
+  qrImage?: string
+  account?: WeixinAccount
+  error?: string
+}
+
+export const weixinApi = {
+  async getAccounts(): Promise<WeixinAccount[]> {
+    const res = await http.get<{ accounts: WeixinAccount[] }>('/weixin/accounts')
+    return res.data.accounts
+  },
+
+  async deleteAccount(id: string): Promise<{ ok: boolean }> {
+    const res = await http.delete<{ ok: boolean }>(`/weixin/accounts/${id}`)
+    return res.data
+  },
+
+  async toggleAccount(id: string, enabled: boolean): Promise<{ ok: boolean; enabled: boolean }> {
+    const res = await http.post<{ ok: boolean; enabled: boolean }>(`/weixin/accounts/${id}/toggle`, { enabled })
+    return res.data
+  },
+
+  async startLogin(): Promise<{ ok: boolean; sessionId: string; qrImage: string }> {
+    const res = await http.post<{ ok: boolean; sessionId: string; qrImage: string }>('/weixin/login/start')
+    return res.data
+  },
+
+  async waitLogin(sessionId: string): Promise<WeixinLoginSession> {
+    const res = await http.get<WeixinLoginSession>('/weixin/login/wait', { params: { sessionId } })
+    return res.data
+  },
+
+  async cancelLogin(sessionId: string): Promise<{ ok: boolean }> {
+    const res = await http.post<{ ok: boolean }>('/weixin/login/cancel', { sessionId })
+    return res.data
+  },
 }
 
 export const configApi = {

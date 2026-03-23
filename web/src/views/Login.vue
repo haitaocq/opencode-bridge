@@ -13,7 +13,7 @@
           <el-input
             v-model="form.password"
             type="password"
-            placeholder="请输入 ADMIN_PASSWORD"
+            placeholder="请输入管理密码"
             show-password
             @keyup.enter="handleLogin"
           />
@@ -38,7 +38,7 @@
 
       <div class="login-tip">
         <el-text size="small" type="info">
-          首次登录请使用 .env 中的 ADMIN_PASSWORD，登录后需修改密码
+          {{ tipMessage }}
         </el-text>
         <el-button
           v-if="hasOldToken"
@@ -56,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Monitor } from '@element-plus/icons-vue'
@@ -65,12 +65,39 @@ import axios from 'axios'
 const router = useRouter()
 const loggingIn = ref(false)
 const error = ref('')
+const hasPassword = ref(true)
+const checkingStatus = ref(true)
 
 const form = reactive({
   password: '',
 })
 
 const hasOldToken = computed(() => !!localStorage.getItem('admin_token'))
+
+const tipMessage = computed(() => {
+  if (!hasPassword.value) {
+    return '首次使用请设置管理密码'
+  }
+  return '请输入管理密码登录'
+})
+
+onMounted(async () => {
+  try {
+    const http = axios.create({ baseURL: '/api' })
+    const { data } = await http.get('/admin/password-status')
+    hasPassword.value = data.hasPassword
+
+    // 如果没有密码，直接跳转到设置密码页面
+    if (!data.hasPassword) {
+      router.replace('/change-password?mode=setup')
+      return
+    }
+  } catch {
+    // 检查失败，保持默认行为
+  } finally {
+    checkingStatus.value = false
+  }
+})
 
 async function handleLogin() {
   if (!form.password.trim()) {

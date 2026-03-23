@@ -1,24 +1,38 @@
 # 部署与运维
 
-## 已安装 Node 后可用命令
+本文档详细说明 OpenCode Bridge 的部署、升级和运维方法。
+
+---
+
+## 1. 环境要求
+
+- **Node.js**: >= 18.0.0
+- **操作系统**: Linux / macOS / Windows
+- **OpenCode**: 需要安装并运行
+
+---
+
+## 2. 部署命令
+
+### 已安装 Node 后可用命令
 
 | 目标 | 命令 | 说明 |
-|---|---|---|
-| 一键部署 | `node scripts/deploy.mjs deploy` | 默认清洁安装后再安装依赖并编译 |
-| 一键更新升级 | `node scripts/deploy.mjs upgrade` | 默认清洁升级：先拆卸清理，再拉取并重新部署 |
-| 安装/升级 OpenCode | `node scripts/deploy.mjs opencode-install` | 执行 `npm i -g opencode-ai` |
-| 检查 OpenCode 环境 | `node scripts/deploy.mjs opencode-check` | 检查 opencode 命令与端口监听 |
-| 启动 OpenCode CLI | `node scripts/deploy.mjs opencode-start` | 自动写入 `opencode.json` 后前台执行 `opencode` |
-| 首次引导 | `node scripts/deploy.mjs guide` | 安装/部署/引导启动的一体化流程 |
+|------|------|------|
+| 一键部署 | `node scripts/deploy.mjs deploy` | 清洁安装后安装依赖并编译 |
+| 一键升级 | `node scripts/deploy.mjs upgrade` | 先清理再拉取并重新部署 |
+| 安装 OpenCode | `node scripts/deploy.mjs opencode-install` | 执行 `npm i -g opencode-ai` |
+| 检查 OpenCode | `node scripts/deploy.mjs opencode-check` | 检查命令与端口监听 |
+| 启动 OpenCode | `node scripts/deploy.mjs opencode-start` | 前台执行 `opencode` |
+| 首次引导 | `node scripts/deploy.mjs guide` | 安装/部署/引导一体化流程 |
 | 管理菜单 | `npm run manage:bridge` | 交互式菜单（默认入口） |
 | 启动后台 | `npm run start` | 后台启动（自动检测/补构建） |
 | 停止后台 | `node scripts/stop.mjs` | 按 PID 停止后台进程 |
 
-**注意**：菜单内已包含 OpenCode 的安装/检查/启动与首次引导，部署时会额外给出 OpenCode 安装与端口检查强提示（不阻断部署）。
+---
 
-## Web 配置面板
+## 3. Web 配置面板
 
-### 访问配置面板
+### 访问地址
 
 服务启动后，通过浏览器访问：
 
@@ -28,111 +42,114 @@ http://localhost:4098
 
 ### 面板功能
 
-- **配置管理**：实时修改飞书、Discord、企业微信、OpenCode、可靠性等所有配置参数
-- **Cron 任务**：创建、启用/禁用、删除定时任务
-- **服务状态**：查看运行时长、版本、数据库路径
-- **模型列表**：获取 OpenCode 可用模型
-- **服务控制**：远程重启服务
-- **平台状态**：查看各平台连接状态
+| 功能 | 说明 |
+|------|------|
+| 配置管理 | 实时修改飞书、Discord、企业微信、OpenCode 等配置 |
+| Cron 管理 | 创建、启用/禁用、删除定时任务 |
+| 服务状态 | 查看运行时长、版本、数据库路径 |
+| 模型列表 | 获取 OpenCode 可用模型 |
+| 服务控制 | 远程重启服务 |
+| 平台状态 | 查看各平台连接状态 |
 
 ### 访问密码
 
-访问密码存储在 `.env` 文件的 `ADMIN_PASSWORD` 字段：
+- 首次访问时在 Web 面板设置
+- 存储在 SQLite 数据库中
+- 可在 Web 面板中修改
 
-- 首次启动时自动生成随机密码
-- 可手动修改 `.env` 文件更改密码
-- 若 `ADMIN_PASSWORD` 为空，则无需密码即可访问
+---
 
-### 配置存储
+## 4. 配置存储
+
+### SQLite 数据库
 
 配置参数存储在 SQLite 数据库中：
 
-- 数据库路径：`data/config.db`
-- 首次启动时自动从 `.env` 迁移
-- 原 `.env` 备份为 `.env.backup`
-
-## Linux 常驻（systemd）
-
-管理菜单内提供以下操作：
-
-- 安装并启动 systemd 服务
-- 停止并禁用 systemd 服务
-- 卸载 systemd 服务
-- 查看运行状态
-
-日志默认在 `logs/service.log` 和 `logs/service.err`。
-
-## npm CLI 安装（更适合本地常驻运行场景）
-
-```bash
-npm install -g opencode-bridge
-opencode-bridge
-```
-
-**说明**：
-- npm 包主要提供 CLI 分发与版本管理便利，不替代 OpenCode 本地服务与飞书/Discord/企业微信配置。
-- 运行后通过 Web 配置面板（`http://localhost:4098`）完成业务配置。
-- CLI 默认优先读取当前工作目录下的 `.env`；若当前目录没有 `.env`，会自动回退读取 `~/.config/opencode-bridge/.env`。
-- 你也可以显式指定配置目录：`opencode-bridge --config-dir /path/to/config`。
-- 若你偏好源码部署，继续使用仓库里的 `scripts/deploy.*` / `scripts/start.*` 也完全没问题。
-
-## npm CLI 配置方式
-
-```bash
-mkdir -p ~/.config/opencode-bridge
-
-# 若你是通过 npm 全局安装：
-cp "$(npm root -g)/opencode-bridge/.env.example" ~/.config/opencode-bridge/.env
-
-# 若你是源码仓库内运行：
-# cp .env.example ~/.config/opencode-bridge/.env
-
-# 直接使用默认配置目录启动
-opencode-bridge
-
-# 启动后访问 http://localhost:4098 进入配置面板
-
-# 或者在当前目录放独立 .env
-mkdir -p ~/opencode-bridge-prod
-cp .env.example ~/opencode-bridge-prod/.env
-cd ~/opencode-bridge-prod
-opencode-bridge
-
-# 也可以显式指定配置目录
-opencode-bridge --config-dir ~/.config/opencode-bridge
-```
-
-## 配置文件说明
-
-### .env 文件（启动参数）
-
-当前版本，`.env` 文件仅存储 Admin 面板的启动参数：
-
-```dotenv
-# Admin 面板端口（默认 4098）
-ADMIN_PORT=4098
-
-# Admin 面板访问密码（留空则无需密码）
-ADMIN_PASSWORD=your-admin-password
-```
-
-### SQLite 数据库（业务配置）
-
-所有业务配置存储在 SQLite 数据库中：
-
-- **数据库路径**：`data/config.db`
-- **首次迁移**：启动时自动从 `.env` 迁移业务配置
-- **备份位置**：原 `.env` 备份为 `.env.backup`
+- **数据库路径**: `data/config.db`
+- **首次迁移**: 启动时自动从 `.env` 迁移
+- **备份位置**: 原 `.env` 备份为 `.env.backup`
 
 ### 配置修改方式
 
 | 方式 | 说明 |
-|---|---|
+|------|------|
 | Web 面板 | 访问 `http://localhost:4098` 可视化修改 |
 | SQLite 工具 | 直接编辑 `data/config.db` 数据库 |
 | 配置文件 | 首次启动前在 `.env` 中配置（会自动迁移） |
 
-## 平台配置
+---
+
+## 5. systemd 常驻运行（Linux）
+
+### 安装服务
+
+通过管理菜单安装：
+
+```bash
+npm run manage:bridge
+# 选择"安装并启动 systemd 服务"
+```
+
+### 手动配置
+
+创建服务文件 `/etc/systemd/system/opencode-bridge.service`:
+
+```ini
+[Unit]
+Description=OpenCode Bridge Service
+After=network.target
+
+[Service]
+Type=simple
+User=your-user
+WorkingDirectory=/path/to/opencode-bridge
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启用服务：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable opencode-bridge
+sudo systemctl start opencode-bridge
+```
+
+### 日志位置
+
+- 标准输出：`logs/service.log`
+- 错误输出：`logs/service.err`
+
+---
+
+## 6. npm CLI 安装
+
+适合本地常驻运行场景：
+
+```bash
+# 全局安装
+npm install -g opencode-bridge
+
+# 启动服务
+opencode-bridge
+
+# 指定配置目录
+opencode-bridge --config-dir ~/.config/opencode-bridge
+```
+
+### 配置目录优先级
+
+1. 当前工作目录下的 `.env`
+2. `~/.config/opencode-bridge/.env`
+3. `--config-dir` 指定的目录
+
+---
+
+## 7. 平台配置
 
 ### 飞书配置
 
@@ -146,19 +163,99 @@ ADMIN_PASSWORD=your-admin-password
 
 详见 [企业微信配置文档](wecom-config.md)。
 
-## 可靠性配置
+---
+
+## 8. 可靠性配置
 
 详见 [可靠性指南](reliability.md)。
 
-## 故障排查
+---
+
+## 9. 故障排查
 
 详见 [故障排查文档](troubleshooting.md)。
 
 ### 常见问题
 
 | 问题 | 解决方案 |
-|---|---|
+|------|----------|
 | 服务无法启动 | 检查端口占用，查看 `logs/service.err` |
-| Web 面板无法访问 | 检查防火墙设置，确认 `ADMIN_PORT` 配置 |
+| Web 面板无法访问 | 检查防火墙设置，确认服务已启动 |
 | 平台无响应 | 检查平台配置，查看服务日志 |
 | OpenCode 连接失败 | 检查 `OPENCODE_HOST` 和 `OPENCODE_PORT` 配置 |
+
+---
+
+## 10. 升级指南
+
+### 源码部署升级
+
+```bash
+# 方式一：使用升级脚本
+node scripts/deploy.mjs upgrade
+
+# 方式二：手动升级
+git pull origin main
+npm install
+npm run build
+node scripts/stop.mjs
+npm run start
+```
+
+### npm 安装升级
+
+```bash
+npm update -g opencode-bridge
+```
+
+---
+
+## 11. 日志管理
+
+### 日志文件
+
+| 文件 | 说明 |
+|------|------|
+| `logs/service.log` | 服务标准输出 |
+| `logs/service.err` | 服务错误输出 |
+| `logs/bridge.pid` | 后台进程 PID |
+| `logs/reliability-audit.jsonl` | 可靠性审计日志 |
+
+### 日志轮转
+
+建议配置 logrotate 进行日志轮转：
+
+```conf
+# /etc/logrotate.d/opencode-bridge
+/path/to/opencode-bridge/logs/*.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+}
+```
+
+---
+
+## 12. 备份与恢复
+
+### 备份
+
+```bash
+# 备份数据目录
+tar -czvf opencode-bridge-backup.tar.gz data/
+
+# 备份配置
+cp data/config.db data/config.db.backup
+```
+
+### 恢复
+
+```bash
+# 恢复数据目录
+tar -xzvf opencode-bridge-backup.tar.gz
+
+# 恢复配置
+cp data/config.db.backup data/config.db
+```

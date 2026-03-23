@@ -1,24 +1,38 @@
 # Deployment and Operations
 
-## Available Commands After Node.js Installation
+This document details OpenCode Bridge deployment, upgrade, and operations methods.
+
+---
+
+## 1. Requirements
+
+- **Node.js**: >= 18.0.0
+- **OS**: Linux / macOS / Windows
+- **OpenCode**: Must be installed and running
+
+---
+
+## 2. Deployment Commands
+
+### Available Commands After Node.js Installation
 
 | Goal | Command | Description |
-|---|---|---|
-| One-click Deploy | `node scripts/deploy.mjs deploy` | Clean install by default, then install dependencies and build |
-| One-click Update/Upgrade | `node scripts/deploy.mjs upgrade` | Clean upgrade by default: uninstall/cleanup first, then pull and redeploy |
-| Install/Upgrade OpenCode | `node scripts/deploy.mjs opencode-install` | Execute `npm i -g opencode-ai` |
-| Check OpenCode Environment | `node scripts/deploy.mjs opencode-check` | Check opencode command and port listening |
-| Start OpenCode CLI | `node scripts/deploy.mjs opencode-start` | Auto-write `opencode.json` then execute `opencode` in foreground |
-| First-time Guide | `node scripts/deploy.mjs guide` | Integrated flow for install/deploy/guide startup |
+|------|---------|-------------|
+| One-click Deploy | `node scripts/deploy.mjs deploy` | Clean install, then install dependencies and build |
+| One-click Upgrade | `node scripts/deploy.mjs upgrade` | Cleanup first, then pull and redeploy |
+| Install OpenCode | `node scripts/deploy.mjs opencode-install` | Execute `npm i -g opencode-ai` |
+| Check OpenCode | `node scripts/deploy.mjs opencode-check` | Check command and port listening |
+| Start OpenCode | `node scripts/deploy.mjs opencode-start` | Execute `opencode` in foreground |
+| First-time Guide | `node scripts/deploy.mjs guide` | Integrated install/deploy/guide flow |
 | Management Menu | `npm run manage:bridge` | Interactive menu (default entry) |
-| Start Background | `npm run start` | Start in background (auto-detect/supplement build) |
+| Start Background | `npm run start` | Start in background (auto-detect/build) |
 | Stop Background | `node scripts/stop.mjs` | Stop background process by PID |
 
-**Note**: The menu includes OpenCode installation/check/startup and first-time guide; deployment will additionally provide strong prompts for OpenCode installation and port check (non-blocking).
+---
 
-## Web Configuration Panel
+## 3. Web Configuration Panel
 
-### Access Configuration Panel
+### Access Address
 
 After service startup, access via browser:
 
@@ -28,137 +42,220 @@ http://localhost:4098
 
 ### Panel Features
 
-- **Configuration Management**: Real-time modification of Feishu, Discord, WeCom, OpenCode, reliability and other configuration parameters
-- **Cron Tasks**: Create, enable/disable, delete scheduled tasks
-- **Service Status**: View uptime, version, database path
-- **Model List**: Get OpenCode available models
-- **Service Control**: Remote restart service
-- **Platform Status**: View platform connection status
+| Feature | Description |
+|---------|-------------|
+| Config Management | Real-time modification of Feishu, Discord, WeCom, OpenCode configs |
+| Cron Management | Create, enable/disable, delete scheduled tasks |
+| Service Status | View uptime, version, database path |
+| Model List | Get OpenCode available models |
+| Service Control | Remote restart service |
+| Platform Status | View connection status of each platform |
 
 ### Access Password
 
-The access password is stored in the `ADMIN_PASSWORD` field of `.env` file:
+- Set on first access in Web panel
+- Stored in SQLite database
+- Can be changed in Web panel
 
-- Random password automatically generated on first startup
-- Can manually modify `.env` file to change password
-- If `ADMIN_PASSWORD` is empty, no password required for access
+---
 
-### Configuration Storage
+## 4. Configuration Storage
+
+### SQLite Database
 
 Configuration parameters are stored in SQLite database:
 
-- Database path: `data/config.db`
-- Automatically migrated from `.env` on first startup
-- Original `.env` backed up to `.env.backup`
-
-## Linux Resident (systemd)
-
-The management menu provides the following operations:
-
-- Install and start systemd service
-- Stop and disable systemd service
-- Uninstall systemd service
-- View running status
-
-Logs default to `logs/service.log` and `logs/service.err`.
-
-## npm CLI Installation (More Suitable for Local Resident Operation)
-
-```bash
-npm install -g opencode-bridge
-opencode-bridge
-```
-
-**Notes**:
-- npm package mainly provides CLI distribution and version management convenience, does not replace OpenCode local service and Feishu/Discord/WeCom configuration.
-- After running, complete business configuration through Web configuration panel (`http://localhost:4098`).
-- CLI defaults to reading `.env` from current working directory; if no `.env` in current directory, automatically falls back to `~/.config/opencode-bridge/.env`.
-- You can also explicitly specify config directory: `opencode-bridge --config-dir /path/to/config`.
-- If you prefer source code deployment, continuing to use `scripts/deploy.*` / `scripts/start.*` from the repository is perfectly fine.
-
-## npm CLI Configuration
-
-```bash
-mkdir -p ~/.config/opencode-bridge
-
-# If installed globally via npm:
-cp "$(npm root -g)/opencode-bridge/.env.example" ~/.config/opencode-bridge/.env
-
-# If running from source repository:
-# cp .env.example ~/.config/opencode-bridge/.env
-
-# Start directly with default config directory
-opencode-bridge
-
-# After startup, visit http://localhost:4098 to access configuration panel
-
-# Or place independent .env in current directory
-mkdir -p ~/opencode-bridge-prod
-cp .env.example ~/opencode-bridge-prod/.env
-cd ~/opencode-bridge-prod
-opencode-bridge
-
-# Or explicitly specify config directory
-opencode-bridge --config-dir ~/.config/opencode-bridge
-```
-
-## Configuration File Notes
-
-### .env File (Startup Parameters)
-
-In current version, `.env` file only stores Admin panel startup parameters:
-
-```dotenv
-# Admin panel port (default 4098)
-ADMIN_PORT=4098
-
-# Admin panel access password (empty means no password required)
-ADMIN_PASSWORD=your-admin-password
-```
-
-### SQLite Database (Business Configuration)
-
-All business configurations are stored in SQLite database:
-
 - **Database Path**: `data/config.db`
-- **First Migration**: Business configuration automatically migrated from `.env` on startup
-- **Backup Location**: Original `.env` backed up to `.env.backup`
+- **First Migration**: Auto-migrate from `.env` on startup
+- **Backup Location**: Original `.env` backed up as `.env.backup`
 
 ### Configuration Modification Methods
 
 | Method | Description |
-|---|---|
-| Web Panel | Visit `http://localhost:4098` for visual modification |
+|--------|-------------|
+| Web Panel | Access `http://localhost:4098` for visual modification |
 | SQLite Tool | Directly edit `data/config.db` database |
-| Config File | Configure in `.env` before first startup (will auto-migrate) |
+| Config File | Configure in `.env` before first startup (auto-migrates) |
 
-## Platform Configuration
+---
+
+## 5. systemd Resident Running (Linux)
+
+### Install Service
+
+Install via management menu:
+
+```bash
+npm run manage:bridge
+# Select "Install and start systemd service"
+```
+
+### Manual Configuration
+
+Create service file `/etc/systemd/system/opencode-bridge.service`:
+
+```ini
+[Unit]
+Description=OpenCode Bridge Service
+After=network.target
+
+[Service]
+Type=simple
+User=your-user
+WorkingDirectory=/path/to/opencode-bridge
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable opencode-bridge
+sudo systemctl start opencode-bridge
+```
+
+### Log Locations
+
+- Standard output: `logs/service.log`
+- Error output: `logs/service.err`
+
+---
+
+## 6. npm CLI Installation
+
+Suitable for local resident running scenarios:
+
+```bash
+# Global install
+npm install -g opencode-bridge
+
+# Start service
+opencode-bridge
+
+# Specify config directory
+opencode-bridge --config-dir ~/.config/opencode-bridge
+```
+
+### Config Directory Priority
+
+1. `.env` in current working directory
+2. `~/.config/opencode-bridge/.env`
+3. Directory specified by `--config-dir`
+
+---
+
+## 7. Platform Configuration
 
 ### Feishu Configuration
 
-See [Feishu Configuration Document](feishu-config-en.md).
+See [Feishu Config Guide](feishu-config-en.md).
 
 ### Discord Configuration
 
-See [Discord Configuration Document](discord-config-en.md).
+See [Discord Config Guide](discord-config-en.md).
 
 ### WeCom Configuration
 
-See [WeCom Configuration Document](wecom-config-en.md).
+See [WeCom Config Guide](wecom-config-en.md).
 
-## Reliability Configuration
+---
+
+## 8. Reliability Configuration
 
 See [Reliability Guide](reliability-en.md).
 
-## Troubleshooting
+---
 
-See [Troubleshooting Document](troubleshooting-en.md).
+## 9. Troubleshooting
+
+See [Troubleshooting Guide](troubleshooting-en.md).
 
 ### Common Issues
 
 | Issue | Solution |
-|---|---|
-| Service cannot start | Check port occupation, view `logs/service.err` |
-| Web panel inaccessible | Check firewall settings, confirm `ADMIN_PORT` configuration |
-| Platform not responding | Check platform configuration, view service logs |
-| OpenCode connection failed | Check `OPENCODE_HOST` and `OPENCODE_PORT` configuration |
+|-------|----------|
+| Service won't start | Check port usage, view `logs/service.err` |
+| Web panel inaccessible | Check firewall, confirm service started |
+| Platform not responding | Check platform config, view service logs |
+| OpenCode connection failed | Check `OPENCODE_HOST` and `OPENCODE_PORT` config |
+
+---
+
+## 10. Upgrade Guide
+
+### Source Deployment Upgrade
+
+```bash
+# Method 1: Use upgrade script
+node scripts/deploy.mjs upgrade
+
+# Method 2: Manual upgrade
+git pull origin main
+npm install
+npm run build
+node scripts/stop.mjs
+npm run start
+```
+
+### npm Installation Upgrade
+
+```bash
+npm update -g opencode-bridge
+```
+
+---
+
+## 11. Log Management
+
+### Log Files
+
+| File | Description |
+|------|-------------|
+| `logs/service.log` | Service standard output |
+| `logs/service.err` | Service error output |
+| `logs/bridge.pid` | Background process PID |
+| `logs/reliability-audit.jsonl` | Reliability audit log |
+
+### Log Rotation
+
+Recommended to configure logrotate:
+
+```conf
+# /etc/logrotate.d/opencode-bridge
+/path/to/opencode-bridge/logs/*.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+}
+```
+
+---
+
+## 12. Backup and Recovery
+
+### Backup
+
+```bash
+# Backup data directory
+tar -czvf opencode-bridge-backup.tar.gz data/
+
+# Backup config
+cp data/config.db data/config.db.backup
+```
+
+### Recovery
+
+```bash
+# Recover data directory
+tar -xzvf opencode-bridge-backup.tar.gz
+
+# Recover config
+cp data/config.db.backup data/config.db
+```

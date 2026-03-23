@@ -679,6 +679,7 @@ export function createAdminServer(options: AdminServerOptions): { start: () => v
         telegram: { status: 'unknown', message: '' },
         qq: { status: 'unknown', message: '' },
         whatsapp: { status: 'unknown', message: '' },
+        weixin: { status: 'unknown', message: '' },
       },
     };
 
@@ -802,6 +803,24 @@ export function createAdminServer(options: AdminServerOptions): { start: () => v
       }
     } catch (e: any) {
       health.checks.whatsapp = { status: 'error', message: e.message };
+    }
+
+    // 检测个人微信配置
+    try {
+      const settings = configStore.get();
+      if (settings.WEIXIN_ENABLED === 'true') {
+        const accounts = configStore.getWeixinAccounts();
+        const enabledAccounts = accounts.filter(a => a.enabled === 1);
+        if (enabledAccounts.length > 0) {
+          health.checks.weixin = { status: 'ok', message: `个人微信已配置 ${enabledAccounts.length} 个账号` };
+        } else {
+          health.checks.weixin = { status: 'warning', message: '个人微信已启用但无有效账号' };
+        }
+      } else {
+        health.checks.weixin = { status: 'ok', message: '个人微信未启用' };
+      }
+    } catch (e: any) {
+      health.checks.weixin = { status: 'error', message: e.message };
     }
 
     res.json(health);
@@ -992,6 +1011,155 @@ export function createAdminServer(options: AdminServerOptions): { start: () => v
 
     configStore.setLoginTimeout(timeoutMinutes);
     res.json({ ok: true, timeoutMinutes, message: '登录超时设置已保存' });
+  });
+
+  // ──────────────────────────────────────────────
+  // 个人微信管理 API
+  // ──────────────────────────────────────────────
+
+  // ── GET /api/weixin/accounts（列出所有微信账号）
+  api.get('/weixin/accounts', (_req, res) => {
+    const accounts = configStore.getWeixinAccounts();
+    // 字段映射：数据库字段 -> 前端期望字段
+    const mapped = accounts.map(acc => ({
+      id: acc.account_id,
+      wxid: acc.account_id,
+      nickname: acc.name || acc.account_id,
+      avatar: '', // 微信协议不提供头像，使用默认
+      enabled: acc.enabled === 1,
+      userId: acc.user_id,
+      createdAt: acc.created_at,
+      lastLoginAt: acc.last_login_at,
+    }));
+    res.json({ accounts: mapped });
+  });
+
+  // ── DELETE /api/weixin/accounts/:id（删除账号）
+  api.delete('/weixin/accounts/:id', (req, res) => {
+    const accountId = req.params.id;
+    const success = configStore.deleteWeixinAccount(accountId);
+    if (success) {
+      res.json({ ok: true, message: `账号 ${accountId} 已删除` });
+    } else {
+      res.status(404).json({ error: '账号不存在' });
+    }
+  });
+
+  // ── POST /api/weixin/accounts/:id/toggle（启用/禁用账号）
+  api.post('/weixin/accounts/:id/toggle', async (req, res) => {
+    const accountId = req.params.id;
+    const { enabled } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+      res.status(400).json({ error: 'enabled 必须是布尔值' });
+      return;
+    }
+
+    const account = configStore.getWeixinAccount(accountId);
+    if (!account) {
+      res.status(404).json({ error: '账号不存在' });
+      return;
+    }
+
+    configStore.setWeixinAccountEnabled(accountId, enabled);
+
+    // 启用/禁用时控制消息轮询
+    try {
+      const { weixinAdapter } = await import('../platform/adapters/weixin-adapter.js');
+      if (enabled) {
+        weixinAdapter.restartAccount(accountId);
+      } else {
+        // 禁用时通过临时暂停机制实现
+        weixinAdapter.restartAccount(accountId); // 这会重置状态
+      }
+    } catch (err) {
+      console.error('[Admin] 控制消息轮询失败:', err);
+    }
+
+    res.json({ ok: true, accountId, enabled, message: `账号已${enabled ? '启用' : '禁用'}` });
+  });
+
+  // ── POST /api/weixin/login/start（启动 QR 登录）
+  api.post('/weixin/login/start', async (_req, res) => {
+    try {
+      const { startQrLoginSession } = await import('../platform/adapters/weixin/weixin-auth.js');
+      const { sessionId, qrImage } = await startQrLoginSession();
+      res.json({ ok: true, sessionId, qrImage });
+    } catch (error: any) {
+      console.error('[Admin] 启动微信登录失败:', error.message);
+      res.status(500).json({ error: '启动登录失败: ' + error.message });
+    }
+  });
+
+  // ── GET /api/weixin/login/wait（轮询登录状态）
+  api.get('/weixin/login/wait', async (req, res) => {
+    const sessionId = req.query.sessionId as string;
+    if (!sessionId) {
+      res.status(400).json({ error: '缺少 sessionId 参数' });
+      return;
+    }
+
+    try {
+      const { pollQrLoginStatus } = await import('../platform/adapters/weixin/weixin-auth.js');
+      const session = await pollQrLoginStatus(sessionId);
+
+      // 构建响应，匹配前端 WeixinLoginSession 接口
+      const response: {
+        ok: boolean;
+        sessionId: string;
+        status: string;
+        qrImage?: string;
+        account?: { id: string; wxid: string; nickname: string; avatar: string; enabled: boolean };
+        error?: string;
+      } = {
+        ok: true,
+        sessionId,
+        status: session.status,
+      };
+
+      if (session.qrImage) {
+        response.qrImage = session.qrImage;
+      }
+
+      if (session.error) {
+        response.error = session.error;
+      }
+
+      // 登录成功时返回账号信息并启动轮询
+      if (session.status === 'confirmed' && session.accountId) {
+        response.account = {
+          id: session.accountId,
+          wxid: session.accountId,
+          nickname: session.accountId,
+          avatar: '',
+          enabled: true,
+        };
+
+        // 启动新登录账号的消息轮询
+        try {
+          const { weixinAdapter } = await import('../platform/adapters/weixin-adapter.js');
+          weixinAdapter.restartAccount(session.accountId);
+          console.log(`[Admin] 已启动账号 ${session.accountId} 的消息轮询`);
+        } catch (err) {
+          console.error('[Admin] 启动消息轮询失败:', err);
+        }
+      }
+
+      res.json(response);
+    } catch (error: any) {
+      console.error('[Admin] 轮询微信登录状态失败:', error.message);
+      res.status(500).json({ error: '轮询登录状态失败: ' + error.message });
+    }
+  });
+
+  // ── POST /api/weixin/login/cancel（取消登录）
+  api.post('/weixin/login/cancel', async (req, res) => {
+    const sessionId = req.body.sessionId as string;
+    if (sessionId) {
+      const { cancelQrLoginSession } = await import('../platform/adapters/weixin/weixin-auth.js');
+      cancelQrLoginSession(sessionId);
+    }
+    res.json({ ok: true, message: '登录已取消' });
   });
 
   app.use('/api', api);

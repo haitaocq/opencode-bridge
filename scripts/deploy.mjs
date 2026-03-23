@@ -521,9 +521,9 @@ function ensureEnvFile() {
     }
   }
 
-  const pureEnvContent = `ADMIN_PORT=4098\nADMIN_PASSWORD=${crypto.randomBytes(8).toString('hex')}\n`;
+  const pureEnvContent = `ADMIN_PORT=4098\n`;
   fs.writeFileSync(envPath, pureEnvContent, 'utf-8');
-  console.log('[deploy] 🔑 已生成极简版 .env 文件（内含初始 ADMIN_PORT 和随机生成的高强度密码）。');
+  console.log('[deploy] 📄 已生成极简版 .env 文件。首次访问 Web 管理面板时需设置管理员密码。');
 }
 
 function ensureLogDir() {

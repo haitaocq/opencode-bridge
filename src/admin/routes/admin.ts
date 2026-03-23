@@ -46,7 +46,7 @@ export function createAdminRoutes(options: AdminRoutesOptions): express.Router {
     });
   });
 
-  // ── PUT /api/admin/password
+  // ── PUT /api/admin/password（修改密码或首次设置密码）
   router.put('/password', (req, res) => {
     const { oldPassword, newPassword } = req.body;
 
@@ -55,8 +55,18 @@ export function createAdminRoutes(options: AdminRoutesOptions): express.Router {
       return;
     }
 
-    // 验证旧密码
-    const currentPassword = configStore.getAdminPassword() || '';
+    const currentPassword = configStore.getAdminPassword();
+    const isFirstSetup = !currentPassword;
+
+    // 首次设置密码：无需验证旧密码
+    if (isFirstSetup) {
+      configStore.setAdminPassword(newPassword);
+      configStore.setPasswordChangedAt(new Date().toISOString());
+      res.json({ ok: true, message: '密码设置成功', isFirstSetup: true });
+      return;
+    }
+
+    // 修改密码：需要验证旧密码
     if (oldPassword !== currentPassword) {
       res.status(401).json({ error: '原密码错误' });
       return;

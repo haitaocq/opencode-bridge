@@ -2,114 +2,138 @@
 
 This document explains how to configure Discord bot to connect to OpenCode Bridge.
 
-## Prerequisites
+---
 
-1. OpenCode Bridge service deployed
-2. OpenCode installed and running
-3. Discord application and bot created
+## 1. Prerequisites
 
-## Configuration Steps
+- OpenCode Bridge service deployed
+- OpenCode installed and running
+- Discord account
 
-### 1. Create Discord Application
+---
+
+## 2. Create Discord Application
+
+### Step 1: Create Application
 
 1. Visit [Discord Developer Portal](https://discord.com/developers/applications)
 2. Click "New Application" to create a new application
 3. Fill in application name, click "Create"
 
-### 2. Create Bot
+### Step 2: Create Bot
 
 1. In application page, select "Bot" tab
 2. Click "Add Bot" to create bot
 3. In "Token" section, click "Copy" to copy Bot Token
-4. Recommended to enable "Presence Intent", "Server Members Intent", and "Message Content Intent"
 
-### 3. Enable Discord Adapter
+### Step 3: Enable Intents
+
+In the Bot tab, enable the following Intents:
+
+- **Presence Intent**: Required for presence tracking
+- **Server Members Intent**: Required for member events
+- **Message Content Intent**: **Required** for reading message content
+
+---
+
+## 3. Bridge Configuration
+
+### Web Panel Configuration
 
 In the Web configuration panel (`http://localhost:4098`):
 
 1. Go to "Platform Access" → "Discord" configuration
 2. Set "Enable Discord Adapter" to `true`
 3. Fill in Discord Bot Token
-4. Fill in Discord Client ID (optional, for some advanced features)
+4. Fill in Discord Client ID (optional, for advanced features)
 5. Save configuration
 
-### 4. Invite Bot to Server
+### Configuration Parameters
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `DISCORD_ENABLED` | No | `false` | Enable Discord adapter |
+| `DISCORD_TOKEN` | Yes | - | Discord Bot Token |
+| `DISCORD_CLIENT_ID` | No | - | Discord application Client ID |
+| `DISCORD_SHOW_THINKING_CHAIN` | No | - | Show AI thinking chain |
+| `DISCORD_SHOW_TOOL_CHAIN` | No | - | Show tool call chain |
+
+---
+
+## 4. Invite Bot to Server
+
+### Generate Invite URL
 
 1. In application page, select "OAuth2" → "URL Generator"
-2. In "SCOPES", select "bot"
-3. In "BOT PERMISSIONS", select required permissions:
+2. In "SCOPES" select "bot"
+3. In "BOT PERMISSIONS" select:
    - Send Messages
    - Read Message History
    - Embed Links
    - Attach Files
    - Add Reactions
    - Use Slash Commands (optional)
-4. Copy generated URL, open in browser
-5. Select server to invite bot to, click "Authorize"
 
-## Configuration Parameters
+### Invite Bot
 
-| Parameter | Description | Example |
-|---|---|---|
-| `DISCORD_ENABLED` | Enable Discord adapter | `true` |
-| `DISCORD_TOKEN` | Discord Bot Token | `your-bot-token-here` |
-| `DISCORD_CLIENT_ID` | Discord Application Client ID | `123456789012345678` |
-| `DISCORD_SHOW_THINKING_CHAIN` | Show AI thinking chain | `true` |
-| `DISCORD_SHOW_TOOL_CHAIN` | Show tool call chain | `true` |
-| `RELIABILITY_CRON_FALLBACK_DISCORD_CONVERSATION_ID` | Backup receiver conversationId | `channel-id-or-dm-id` |
+1. Copy generated URL
+2. Open in browser
+3. Select server to invite bot
+4. Click "Authorize"
 
-## Discord Commands
+---
 
-| Command | Description |
-|---|---|
-| `///session` | View bound session |
-| `///new` | Create and bind new session |
-| `///bind <sessionId>` | Bind existing session |
-| `///undo` | Undo last |
-| `///compact` | Compress context |
-| `///cron ...` | Manage runtime Cron tasks |
+## 5. Usage
 
-## Usage
+### Private Chat
 
-### Direct Message
-
-Send message directly to bot to start conversation.
+Send messages directly to the bot.
 
 ### Group Chat
 
-In server channels:
-1. @mention bot, then send message
-2. Or use `/` commands
+- @mention the bot, then send message
+- Or use `/` commands
 
-### Control Panel
+### Available Commands
 
-Use `///session` command to view current session status.
+| Command | Description |
+|---------|-------------|
+| `///session` | View bound session |
+| `///new` | Create and bind new session |
+| `///bind <sessionId>` | Bind existing session |
+| `///undo` | Undo last round |
+| `///compact` | Compress context |
+| `///cron ...` | Manage Cron tasks |
 
-## Troubleshooting
+---
 
-### Discord Not Responding
+## 6. Troubleshooting
 
-1. Check if `DISCORD_ENABLED` is set to `true`
-2. Check if `DISCORD_TOKEN` is correct
-3. Check if bot is online (shows online status in Discord server)
-4. Check service logs for error messages
+### Bot Not Responding
 
-### Message Sending Failed
-
-1. Check if bot permissions are sufficient
-2. Check if channel permissions allow bot to send messages
-3. Check if network connection is normal
+1. Check `DISCORD_ENABLED` is `true`
+2. Check `DISCORD_TOKEN` is correct
+3. Check bot is online (shows online status in Discord)
+4. View service logs for errors
 
 ### Commands Not Working
 
 1. Ensure Message Content Intent is enabled
-2. Check if bot has permission to read message history
+2. Check bot has Read Message History permission
 3. Confirm command format is correct
 
-## Notes
+### Message Send Failed
 
-1. Discord adapter supports text messages and component interactions
-2. Does not support rich text cards (different from Feishu, Discord uses Embeds and components)
-3. File sending functionality is limited by Discord API restrictions (single file max 8MB, Nitro server 50MB)
-4. Recommend testing configuration in a test channel first
-5. Discord bot requires Message Content Intent to read message content
+1. Check bot permissions are sufficient
+2. Check channel permissions allow bot to send messages
+3. Check network connection
+
+---
+
+## 7. Notes
+
+- Discord adapter supports text messages and component interaction
+- Does not support rich text cards (uses Embeds and components instead)
+- File sending limited by Discord API (8MB standard, 50MB Nitro)
+- Recommend testing in test channel first
+- Message Content Intent is required for reading message content

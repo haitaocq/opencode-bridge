@@ -162,8 +162,8 @@ flowchart TB
 
 ## 7. Configuration Storage Architecture
 
-- `.env` file: Only stores Admin panel startup parameters (`ADMIN_PORT`, `ADMIN_PASSWORD`).
-- SQLite database: Stores all business configurations, supports real-time read/write.
+- `.env` file: Only stores Admin panel startup parameters (`ADMIN_PORT`).
+- SQLite database: Stores all business configurations including admin password, supports real-time read/write.
 - Configuration migration: Automatically migrates from `.env` to SQLite on first startup, original `.env` backed up as `.env.backup`.
 
 ## 8. Runtime and Troubleshooting Recommendations

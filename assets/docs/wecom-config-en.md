@@ -1,71 +1,85 @@
 # WeCom Configuration Guide
 
-This document explains how to configure WeCom bot to connect to OpenCode Bridge.
+This document explains how to configure WeCom (WeChat Work) bot to connect to OpenCode Bridge.
 
-## Prerequisites
+---
 
-1. OpenCode Bridge service deployed
-2. OpenCode installed and running
-3. WeCom application or bot created
+## 1. Prerequisites
 
-## Configuration Steps
+- OpenCode Bridge service deployed
+- OpenCode installed and running
+- WeCom enterprise account
 
-### 1. Enable WeCom Adapter
+---
+
+## 2. Create WeCom Application
+
+### Step 1: Log in to Admin Backend
+
+1. Log in to [WeCom Admin Backend](https://work.weixin.qq.com/)
+2. Go to "Application Management"
+
+### Step 2: Create Application
+
+1. Click "Applications" → "Self-built"
+2. Create new application or select existing one
+3. Record the AgentId (Bot ID) and Secret
+
+---
+
+## 3. Bridge Configuration
+
+### Web Panel Configuration
 
 In the Web configuration panel (`http://localhost:4098`):
 
 1. Go to "Platform Access" → "WeCom" configuration
 2. Set "Enable WeCom Adapter" to `true`
-3. Fill in WeCom Bot ID
+3. Fill in WeCom Bot ID (AgentId)
 4. Fill in WeCom Secret
 5. Save configuration
 
-### 2. Get WeCom Credentials
+### Configuration Parameters
 
-#### Get Bot ID
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `WECOM_ENABLED` | No | `false` | Enable WeCom adapter |
+| `WECOM_BOT_ID` | Yes | - | WeCom Bot ID (AgentId) |
+| `WECOM_SECRET` | Yes | - | WeCom Secret |
+| `WECOM_SHOW_THINKING_CHAIN` | No | - | Show AI thinking chain |
+| `WECOM_SHOW_TOOL_CHAIN` | No | - | Show tool call chain |
 
-1. Log in to WeCom admin backend
-2. Go to "Application Management" → "Applications" → "Self-built"
-3. Create or select an existing application
-4. Copy "AgentId" as Bot ID from application details page
+---
 
-#### Get Secret
+## 4. Configure Message Reception
 
-1. In application details page, click "View" button next to "Secret"
-2. Copy the Secret value
-
-### 3. Configure Message Receiving
+### Set API Receive Address
 
 1. In application details page, find "Receive Message" configuration
-2. Set API receiving address to:
+2. Set API receive address to:
    ```
-   http://your-server-address:your-port/wecom/webhook
+   http://your-server:your-port/wecom/webhook
    ```
 3. Save configuration
 
-### 4. Configure Permissions
+---
 
-In WeCom admin backend, ensure the application has the following permissions:
+## 5. Configure Permissions
+
+In WeCom admin backend, ensure application has following permissions:
 
 - Send messages to users/departments/tags
 - Read user information
-- Manage address book (optional)
+- Manage contacts (optional)
 
-## Configuration Parameters
+---
 
-| Parameter | Description | Example |
-|---|---|---|
-| `WECOM_ENABLED` | Enable WeCom adapter | `true` |
-| `WECOM_BOT_ID` | WeCom Bot ID (AgentId) | `1000002` |
-| `WECOM_SECRET` | WeCom Secret | `your-secret-here` |
-| `WECOM_SHOW_THINKING_CHAIN` | Show AI thinking chain | `true` |
-| `WECOM_SHOW_TOOL_CHAIN` | Show tool call chain | `true` |
-| `RELIABILITY_CRON_FALLBACK_WECOM_CONVERSATION_ID` | Backup receiver conversationId | `userid or groupid` |
+## 6. Usage
 
-## WeCom Commands
+### Available Commands
 
 | Command | Description |
-|---|---|
+|---------|-------------|
 | `/help` | View help |
 | `/panel` | Open control panel |
 | `/model <provider:model>` | Switch model |
@@ -74,24 +88,28 @@ In WeCom admin backend, ensure the application has the following permissions:
 | `/undo` | Undo last interaction |
 | `/compact` | Compress context |
 
-## Troubleshooting
+---
 
-### WeCom Not Responding
+## 7. Troubleshooting
 
-1. Check if `WECOM_ENABLED` is set to `true`
-2. Check if `WECOM_BOT_ID` and `WECOM_SECRET` are correct
-3. Check if message receiving address is configured correctly
-4. Check service logs for error messages
+### Bot Not Responding
 
-### Message Sending Failed
+1. Check `WECOM_ENABLED` is `true`
+2. Check `WECOM_BOT_ID` and `WECOM_SECRET` are correct
+3. Check message receive URL is configured correctly
+4. View service logs for errors
 
-1. Check if application permissions are sufficient
-2. Check if user/group ID is correct
-3. Check if network connection is normal
+### Message Send Failed
 
-## Notes
+1. Check application permissions are sufficient
+2. Check user/group ID is correct
+3. Check network connection
 
-1. WeCom adapter currently supports text message interaction
-2. Does not support rich text cards (different from Feishu)
-3. File sending functionality is limited by WeCom API restrictions
-4. Recommend testing configuration in a test group first
+---
+
+## 8. Notes
+
+- WeCom adapter currently supports text message interaction
+- Does not support rich text cards (unlike Feishu)
+- File sending is limited by WeCom API
+- Recommend testing in test group first

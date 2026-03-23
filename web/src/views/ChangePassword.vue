@@ -3,29 +3,37 @@
     <el-card class="change-password-card" shadow="hover">
       <template #header>
         <div class="card-header">
-          <el-icon size="24" color="#e6a23c"><WarningFilled /></el-icon>
-          <h2>首次登录 - 请修改密码</h2>
+          <el-icon size="24" :color="isSetupMode ? '#409eff' : '#e6a23c'">
+            <component :is="isSetupMode ? 'Lock' : 'WarningFilled'" />
+          </el-icon>
+          <h2>{{ isSetupMode ? '首次使用 - 设置管理密码' : '首次登录 - 请修改密码' }}</h2>
         </div>
       </template>
 
       <el-alert
-        type="warning"
+        :type="isSetupMode ? 'info' : 'warning'"
         :closable="false"
         show-icon
         class="warning-alert"
       >
         <template #title>
-          <strong>安全提示</strong>
+          <strong>{{ isSetupMode ? '设置密码' : '安全提示' }}</strong>
         </template>
         <template #default>
-          为了账户安全，首次登录必须修改密码后才能继续使用。
-          新密码长度至少 8 位。
-          <br /><strong>原密码</strong>即您刚才登录时使用的密码。
+          <template v-if="isSetupMode">
+            首次使用需要设置管理密码，设置完成后即可访问管理面板。
+            <br />密码长度至少 8 位。
+          </template>
+          <template v-else>
+            为了账户安全，首次登录必须修改密码后才能继续使用。
+            新密码长度至少 8 位。
+            <br /><strong>原密码</strong>即您刚才登录时使用的密码。
+          </template>
         </template>
       </el-alert>
 
       <el-form :model="form" :rules="rules" ref="formRef" label-width="80px" size="large">
-        <el-form-item label="原密码" prop="oldPassword">
+        <el-form-item v-if="!isSetupMode" label="原密码" prop="oldPassword">
           <el-input
             v-model="form.oldPassword"
             type="password"
@@ -59,9 +67,9 @@
         </el-form-item>
 
         <el-form-item class="button-row">
-          <el-button :disabled="submitting" @click="handleCancel">取消</el-button>
+          <el-button v-if="!isSetupMode" :disabled="submitting" @click="handleCancel">取消</el-button>
           <el-button type="primary" :loading="submitting" @click="handleSubmit">
-            确认修改
+            {{ isSetupMode ? '确认设置' : '确认修改' }}
           </el-button>
         </el-form-item>
       </el-form>
@@ -70,15 +78,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { WarningFilled } from '@element-plus/icons-vue'
+import { WarningFilled, Lock } from '@element-plus/icons-vue'
 import axios from 'axios'
 
 const router = useRouter()
+const route = useRoute()
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
+
+const isSetupMode = computed(() => route.query.mode === 'setup')
 
 const form = reactive({
   oldPassword: '',
@@ -100,8 +111,8 @@ const validateConfirmPassword = (_rule: unknown, value: string, callback: (error
   }
 }
 
-const rules: FormRules = {
-  oldPassword: [{ required: true, message: '请输入原密码', trigger: 'blur' }],
+const rules = computed<FormRules>(() => ({
+  oldPassword: isSetupMode.value ? [] : [{ required: true, message: '请输入原密码', trigger: 'blur' }],
   newPassword: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
     { min: 8, message: '密码长度至少 8 位', trigger: 'blur' },
@@ -110,7 +121,7 @@ const rules: FormRules = {
     { required: true, message: '请确认新密码', trigger: 'blur' },
     { validator: validateConfirmPassword, trigger: 'blur' },
   ],
-}
+}))
 
 function handleCancel() {
   localStorage.removeItem('admin_token')
@@ -131,25 +142,33 @@ async function handleSubmit() {
   submitting.value = true
 
   try {
-    const token = localStorage.getItem('admin_token')
-    const http = axios.create({
-      baseURL: '/api',
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const http = axios.create({ baseURL: '/api' })
 
-    await http.put('/admin/password', {
-      oldPassword: form.oldPassword,
+    // 首次设置模式不需要 token
+    if (!isSetupMode.value) {
+      const token = localStorage.getItem('admin_token')
+      http.defaults.headers.Authorization = `Bearer ${token}`
+    }
+
+    const payload: { oldPassword?: string; newPassword: string } = {
       newPassword: form.newPassword,
-    })
+    }
+
+    // 首次设置模式不需要 oldPassword
+    if (!isSetupMode.value) {
+      payload.oldPassword = form.oldPassword
+    }
+
+    await http.put('/admin/password', payload)
 
     localStorage.setItem('admin_token', form.newPassword)
-    ElMessage.success('密码修改成功，正在跳转...')
+    ElMessage.success(isSetupMode.value ? '密码设置成功，正在跳转...' : '密码修改成功，正在跳转...')
     router.push('/dashboard')
   } catch (e: any) {
     if (e.response?.status === 401) {
       fieldErrors.oldPassword = '原密码错误，请重新输入'
     } else {
-      ElMessage.error(e.response?.data?.error || '修改失败，请重试')
+      ElMessage.error(e.response?.data?.error || '操作失败，请重试')
     }
   } finally {
     submitting.value = false

@@ -110,7 +110,9 @@ export function isEnabled(platformId: string): boolean {
 import { qqAdapter } from './adapters/qq-adapter.js';
 import { whatsappAdapter } from './adapters/whatsapp-adapter.js';
 import { telegramAdapter } from './adapters/telegram-adapter.js';
+import { weixinAdapter } from './adapters/weixin-adapter.js';
 
 register(qqAdapter);
 register(whatsappAdapter);
 register(telegramAdapter);
+register(weixinAdapter);

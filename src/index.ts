@@ -9,6 +9,7 @@ import { wecomAdapter } from './platform/adapters/wecom-adapter.js';
 import { telegramAdapter } from './platform/adapters/telegram-adapter.js';
 import { qqAdapter } from './platform/adapters/qq-adapter.js';
 import { whatsappAdapter } from './platform/adapters/whatsapp-adapter.js';
+import { weixinAdapter } from './platform/adapters/weixin-adapter.js';
 import type { PlatformSender } from './platform/types.js';
 import { opencodeClient, type PermissionRequestEvent } from './opencode/client.js';
 import { streamStateManager, type ToolRuntimeState, type TimelineSegment, type StreamTimelineState } from './store/stream-state.js';
@@ -29,6 +30,8 @@ function getSenderByPlatform(platform: string): PlatformSender | null {
       return qqAdapter.getSender();
     case 'whatsapp':
       return whatsappAdapter.getSender();
+    case 'weixin':
+      return weixinAdapter.getSender();
     default:
       console.warn(`[getSenderByPlatform] 未知平台: ${platform}, 使用飞书作为fallback`);
       return feishuAdapter.getSender();
@@ -47,6 +50,7 @@ import { wecomHandler } from './handlers/wecom.js';
 import { telegramHandler } from './handlers/telegram.js';
 import { qqHandler } from './handlers/qq.js';
 import { whatsappHandler } from './handlers/whatsapp.js';
+import { weixinHandler } from './handlers/weixin.js';
 import { commandHandler } from './handlers/command.js';
 import { cardActionHandler } from './handlers/card-action.js';
 import { validateConfig, routerConfig, outputConfig, reliabilityConfig, opencodeConfig, isPlatformConfigured } from './config.js';
@@ -1593,6 +1597,12 @@ async function main() {
     await whatsappHandler.handleAction(event, sender);
   });
 
+  // 个人微信消息监听
+  weixinAdapter.onMessage(async (event) => {
+    const sender = weixinAdapter.getSender();
+    await weixinHandler.handleMessage(event, sender);
+  });
+
 
   // 6. OpenCode 事件监听已移至 openCodeEventHub（单一入口）
 
@@ -1733,6 +1743,14 @@ async function main() {
     // WhatsApp 启动失败不影响其他平台流程
   }
 
+  // 7.10. 启动个人微信适配器（如果启用）
+  try {
+    await weixinAdapter.start();
+  } catch (e) {
+    console.error('[个人微信] 启动失败:', e);
+    // Weixin 启动失败不影响其他平台流程
+  }
+
   // 8. 启动飞书客户端
   if (isPlatformConfigured('feishu')) {
     feishuClient.setCardActionHandler(async (event) => {
@@ -1824,6 +1842,13 @@ async function main() {
       whatsappAdapter.stop();
     } catch (e) {
       console.error('[WhatsApp] 停止适配器失败:', e);
+    }
+
+    // 3.9. 停止个人微信适配器
+    try {
+      weixinAdapter.stop();
+    } catch (e) {
+      console.error('[个人微信] 停止适配器失败:', e);
     }
 
     // 4. 停止飞书连接

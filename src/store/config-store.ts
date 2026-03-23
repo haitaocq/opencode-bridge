@@ -40,6 +40,9 @@ export interface BridgeSettings {
   WECOM_BOT_ID?: string;
   WECOM_SECRET?: string;
 
+  // 个人微信
+  WEIXIN_ENABLED?: string;
+
   // Telegram
   TELEGRAM_ENABLED?: string;
   TELEGRAM_BOT_TOKEN?: string;
@@ -183,6 +186,33 @@ class ConfigStore {
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
+      -- 微信账号表
+      CREATE TABLE IF NOT EXISTS weixin_accounts (
+        account_id    TEXT PRIMARY KEY,
+        user_id       TEXT NOT NULL DEFAULT '',
+        base_url      TEXT NOT NULL DEFAULT '',
+        cdn_base_url  TEXT NOT NULL DEFAULT '',
+        token         TEXT NOT NULL,
+        name          TEXT NOT NULL DEFAULT '',
+        enabled       INTEGER NOT NULL DEFAULT 1,
+        last_login_at TEXT,
+        created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      -- 微信会话 token 表
+      CREATE TABLE IF NOT EXISTS weixin_context_tokens (
+        account_id   TEXT NOT NULL,
+        peer_user_id TEXT NOT NULL,
+        context_token TEXT NOT NULL,
+        updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (account_id, peer_user_id)
+      );
+      -- 微信轮询游标表
+      CREATE TABLE IF NOT EXISTS weixin_poll_offsets (
+        account_id TEXT PRIMARY KEY,
+        offset_buf TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
     `);
   }
 
@@ -300,6 +330,139 @@ class ConfigStore {
   getDbPath(): string {
     return this.dbPath;
   }
+
+  // ──────────────────────────────────────────────
+  // 微信账号管理
+  // ──────────────────────────────────────────────
+
+  /** 微信账号行类型 */
+  getWeixinAccounts(): WeixinAccountRow[] {
+    return this.db
+      .prepare<[], WeixinAccountRow>('SELECT * FROM weixin_accounts ORDER BY created_at DESC')
+      .all();
+  }
+
+  getWeixinAccount(accountId: string): WeixinAccountRow | undefined {
+    return this.db
+      .prepare<[string], WeixinAccountRow>('SELECT * FROM weixin_accounts WHERE account_id = ?')
+      .get(accountId);
+  }
+
+  upsertWeixinAccount(params: {
+    accountId: string;
+    userId?: string;
+    baseUrl?: string;
+    cdnBaseUrl?: string;
+    token: string;
+    name?: string;
+    enabled?: boolean;
+  }): void {
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO weixin_accounts (account_id, user_id, base_url, cdn_base_url, token, name, enabled, last_login_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(account_id) DO UPDATE SET
+           user_id = COALESCE(excluded.user_id, weixin_accounts.user_id),
+           base_url = COALESCE(excluded.base_url, weixin_accounts.base_url),
+           cdn_base_url = COALESCE(excluded.cdn_base_url, weixin_accounts.cdn_base_url),
+           token = COALESCE(excluded.token, weixin_accounts.token),
+           name = COALESCE(excluded.name, weixin_accounts.name),
+           enabled = excluded.enabled,
+           last_login_at = excluded.last_login_at,
+           updated_at = excluded.updated_at`
+      )
+      .run(
+        params.accountId,
+        params.userId || '',
+        params.baseUrl || '',
+        params.cdnBaseUrl || '',
+        params.token,
+        params.name || params.accountId,
+        params.enabled !== false ? 1 : 0,
+        now,
+        now,
+        now
+      );
+  }
+
+  deleteWeixinAccount(accountId: string): boolean {
+    const result = this.db.prepare('DELETE FROM weixin_accounts WHERE account_id = ?').run(accountId);
+    // 同时清理相关的 context_tokens 和 poll_offsets
+    this.db.prepare('DELETE FROM weixin_context_tokens WHERE account_id = ?').run(accountId);
+    this.db.prepare('DELETE FROM weixin_poll_offsets WHERE account_id = ?').run(accountId);
+    return result.changes > 0;
+  }
+
+  setWeixinAccountEnabled(accountId: string, enabled: boolean): void {
+    const now = new Date().toISOString();
+    this.db
+      .prepare('UPDATE weixin_accounts SET enabled = ?, updated_at = ? WHERE account_id = ?')
+      .run(enabled ? 1 : 0, now, accountId);
+  }
+
+  // ──────────────────────────────────────────────
+  // 微信 context_token 管理
+  // ──────────────────────────────────────────────
+
+  getWeixinContextToken(accountId: string, peerUserId: string): string | null {
+    const row = this.db
+      .prepare<[string, string], { context_token: string }>(
+        'SELECT context_token FROM weixin_context_tokens WHERE account_id = ? AND peer_user_id = ?'
+      )
+      .get(accountId, peerUserId);
+    return row?.context_token || null;
+  }
+
+  upsertWeixinContextToken(accountId: string, peerUserId: string, contextToken: string): void {
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO weixin_context_tokens (account_id, peer_user_id, context_token, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(account_id, peer_user_id) DO UPDATE SET context_token = excluded.context_token, updated_at = excluded.updated_at`
+      )
+      .run(accountId, peerUserId, contextToken, now);
+  }
+
+  // ──────────────────────────────────────────────
+  // 微信轮询游标管理
+  // ──────────────────────────────────────────────
+
+  getWeixinPollOffset(accountId: string): string {
+    const row = this.db
+      .prepare<[string], { offset_buf: string }>('SELECT offset_buf FROM weixin_poll_offsets WHERE account_id = ?')
+      .get(accountId);
+    return row?.offset_buf || '';
+  }
+
+  setWeixinPollOffset(accountId: string, offsetBuf: string): void {
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO weixin_poll_offsets (account_id, offset_buf, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(account_id) DO UPDATE SET offset_buf = excluded.offset_buf, updated_at = excluded.updated_at`
+      )
+      .run(accountId, offsetBuf, now);
+  }
 }
 
 export const configStore = new ConfigStore();
+
+// ──────────────────────────────────────────────
+// 微信账号类型定义
+// ──────────────────────────────────────────────
+
+export interface WeixinAccountRow {
+  account_id: string;
+  user_id: string;
+  base_url: string;
+  cdn_base_url: string;
+  token: string;
+  name: string;
+  enabled: number;
+  last_login_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
