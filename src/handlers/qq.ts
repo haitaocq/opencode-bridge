@@ -153,11 +153,12 @@ function getQQHelpText(): string {
 
 常用命令
 /model - 查看当前模型
-/model <名称> - 切换模型 (如 /model gpt-4)
+/model <名称> - 切换模型
+/models - 列出所有可用模型
 /agent - 查看当前角色
 /agent <名称> - 切换角色
+/agents - 列出所有可用角色
 /agent off - 切回默认角色
-/panel - 显示控制面板
 /status - 查看当前状态
 /session - 列出当前项目的会话
 /session new - 开启新话题
@@ -522,8 +523,16 @@ export class QQHandler {
         await this.handleModelCommand(command, chatId, senderId, sender);
         break;
 
+      case 'models':
+        await this.handleModelsCommand(chatId, sender);
+        break;
+
       case 'agent':
         await this.handleAgentCommand(command, chatId, senderId, sender);
+        break;
+
+      case 'agents':
+        await this.handleAgentsCommand(chatId, sender);
         break;
 
       case 'clear':
@@ -540,10 +549,6 @@ export class QQHandler {
         }
         break;
       }
-
-      case 'panel':
-        await sender.sendText(chatId, 'QQ 平台暂不支持交互式面板，请使用命令操作。\n/help 查看可用命令。');
-        break;
 
       default:
         // 其他命令暂不支持
@@ -714,6 +719,68 @@ export class QQHandler {
   }
 
   /**
+   * 列出所有可用模型
+   */
+  private async handleModelsCommand(chatId: string, sender: PlatformSender): Promise<void> {
+    try {
+      const providersResult = await opencodeClient.getProviders();
+      const providers = Array.isArray(providersResult.providers) ? providersResult.providers : [];
+
+      const lines: string[] = ['📋 可用模型列表\n'];
+      let totalCount = 0;
+
+      for (const provider of providers) {
+        const providerId = (provider as Record<string, unknown>).id as string | undefined;
+        const providerName = (provider as Record<string, unknown>).name || providerId || 'Unknown';
+        const rawModels = (provider as Record<string, unknown>).models;
+
+        const models: Array<{ id: string; name?: string }> = [];
+        if (Array.isArray(rawModels)) {
+          for (const m of rawModels) {
+            if (m && typeof m === 'object') {
+              const mr = m as Record<string, unknown>;
+              models.push({
+                id: (mr.id as string) || '',
+                name: mr.name as string | undefined,
+              });
+            }
+          }
+        }
+
+        if (models.length === 0) continue;
+        lines.push(`【${providerName}】`);
+
+        for (const model of models.slice(0, 10)) {
+          const modelDisplay = model.name || model.id;
+          lines.push(`  ${modelDisplay} (${providerId}:${model.id})`);
+          totalCount++;
+        }
+
+        if (models.length > 10) {
+          lines.push(`  ... 共 ${models.length} 个模型`);
+        }
+        lines.push('');
+      }
+
+      if (totalCount === 0) {
+        lines.push('暂无可用模型');
+      } else {
+        lines.push(`共 ${totalCount} 个模型，使用 /model <名称> 切换`);
+      }
+
+      let result = lines.join('\n');
+      if (result.length > 3000) {
+        result = result.slice(0, 2900) + '\n\n... 列表过长，已截断';
+      }
+
+      await sender.sendText(chatId, result);
+    } catch (error) {
+      console.error('[QQ] 获取模型列表失败:', error);
+      await sender.sendText(chatId, '获取模型列表失败');
+    }
+  }
+
+  /**
    * 处理 agent 命令
    */
   private async handleAgentCommand(
@@ -742,6 +809,37 @@ export class QQHandler {
 
     chatSessionStore.updateConfigByConversation('qq', chatId, { preferredAgent: command.agentName.trim() });
     await sender.sendText(chatId, `已切换角色: ${command.agentName.trim()}`);
+  }
+
+  /**
+   * 列出所有可用角色
+   */
+  private async handleAgentsCommand(chatId: string, sender: PlatformSender): Promise<void> {
+    try {
+      const agents = await opencodeClient.getAgents();
+      const visibleAgents = agents.filter((a: { name: string }) =>
+        a.name && !['compaction', 'title', 'summary'].includes(a.name)
+      );
+
+      if (visibleAgents.length === 0) {
+        await sender.sendText(chatId, '暂无可用角色');
+        return;
+      }
+
+      const lines: string[] = ['📋 可用角色列表\n'];
+
+      for (const agent of visibleAgents) {
+        const desc = agent.description ? ` - ${agent.description.slice(0, 50)}${agent.description.length > 50 ? '...' : ''}` : '';
+        lines.push(`• ${agent.name}${desc}`);
+      }
+
+      lines.push(`\n共 ${visibleAgents.length} 个角色，使用 /agent <名称> 切换`);
+
+      await sender.sendText(chatId, lines.join('\n'));
+    } catch (error) {
+      console.error('[QQ] 获取角色列表失败:', error);
+      await sender.sendText(chatId, '获取角色列表失败');
+    }
   }
 
   /**

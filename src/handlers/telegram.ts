@@ -837,8 +837,16 @@ export class TelegramHandler {
           await this.handleModel(chatId, command.modelName, sender);
           break;
 
+        case 'models':
+          await this.handleModels(chatId, sender);
+          break;
+
         case 'agent':
           await this.handleAgent(chatId, command.agentName, sender);
+          break;
+
+        case 'agents':
+          await this.handleAgents(chatId, sender);
           break;
 
         case 'effort':
@@ -870,10 +878,6 @@ export class TelegramHandler {
 
         case 'clear':
           await this.handleNewSession(chatId, senderId, chatType || 'p2p', undefined, undefined, sender);
-          break;
-
-        case 'panel':
-          await sender.sendText(chatId, this.getPanelText());
           break;
 
         case 'project':
@@ -914,8 +918,10 @@ export class TelegramHandler {
 🛠️ **常用命令**
 • \`/model\` 查看当前模型
 • \`/model <名称>\` 切换模型
+• \`/models\` 列出所有可用模型
 • \`/agent\` 查看当前角色
 • \`/agent <名称>\` 切换角色
+• \`/agents\` 列出所有可用角色
 • \`/effort\` 查看当前强度
 • \`/effort <档位>\` 设置会话默认强度
 • \`/undo\` 撤回上一轮对话
@@ -937,33 +943,6 @@ export class TelegramHandler {
 💡 **提示**
 • 切换的模型/角色仅对当前会话生效
 • 强度优先级: #临时覆盖 > /effort 会话默认 > OpenCode 默认`;
-  }
-
-  /**
-   * 获取面板文本
-   */
-  private getPanelText(): string {
-    return `🎛️ **控制面板**
-
-**模型切换**
-• /model - 查看当前模型
-• /model gpt-4 - 切换到 GPT-4
-• /model claude-3-opus - 切换到 Claude
-
-**角色切换**
-• /agent - 查看当前角色
-• /agent general - 切换到通用角色
-
-**强度设置**
-• /effort - 查看当前强度
-• /effort low - 快速模式
-• /effort high - 平衡模式
-• /effort xhigh - 深度模式
-
-**会话管理**
-• /session new - 创建新会话
-• /sessions - 列出会话
-• /status - 查看状态`;
   }
 
   /**
@@ -1106,6 +1085,69 @@ export class TelegramHandler {
   }
 
   /**
+   * 列出所有可用模型
+   */
+  private async handleModels(chatId: string, sender: PlatformSender): Promise<void> {
+    try {
+      const providersResult = await opencodeClient.getProviders();
+      const providers = Array.isArray(providersResult.providers) ? providersResult.providers : [];
+
+      const lines: string[] = ['📋 **可用模型列表**\n'];
+      let totalCount = 0;
+
+      for (const provider of providers) {
+        const providerId = (provider as Record<string, unknown>).id as string | undefined;
+        const providerName = (provider as Record<string, unknown>).name || providerId || 'Unknown';
+        const rawModels = (provider as Record<string, unknown>).models;
+
+        const models: Array<{ id: string; name?: string }> = [];
+        if (Array.isArray(rawModels)) {
+          for (const m of rawModels) {
+            if (m && typeof m === 'object') {
+              const mr = m as Record<string, unknown>;
+              models.push({
+                id: (mr.id as string) || '',
+                name: mr.name as string | undefined,
+              });
+            }
+          }
+        }
+
+        if (models.length === 0) continue;
+        lines.push(`**${providerName}**`);
+
+        for (const model of models.slice(0, 15)) {
+          const modelDisplay = model.name || model.id;
+          const modelKey = `${providerId}:${model.id}`;
+          lines.push(`  • ${modelDisplay} (\`${modelKey}\`)`);
+          totalCount++;
+        }
+
+        if (models.length > 15) {
+          lines.push(`  _... 共 ${models.length} 个模型_`);
+        }
+        lines.push('');
+      }
+
+      if (totalCount === 0) {
+        lines.push('暂无可用模型');
+      } else {
+        lines.push(`💡 共 ${totalCount} 个模型，使用 \`/model <名称>\` 切换`);
+      }
+
+      let result = lines.join('\n');
+      if (result.length > 4000) {
+        result = result.slice(0, 3900) + '\n\n... 列表过长，已截断';
+      }
+
+      await sender.sendText(chatId, result);
+    } catch (error) {
+      console.error('[Telegram] 获取模型列表失败:', error);
+      await sender.sendText(chatId, '❌ 获取模型列表失败');
+    }
+  }
+
+  /**
    * 处理角色切换
    */
   private async handleAgent(chatId: string, agentName: string | undefined, sender: PlatformSender): Promise<void> {
@@ -1142,6 +1184,37 @@ export class TelegramHandler {
     } catch (error) {
       console.error('[Telegram] 设置角色失败:', error);
       await sender.sendText(chatId, '❌ 设置角色失败');
+    }
+  }
+
+  /**
+   * 列出所有可用角色
+   */
+  private async handleAgents(chatId: string, sender: PlatformSender): Promise<void> {
+    try {
+      const agents = await opencodeClient.getAgents();
+      const visibleAgents = agents.filter((a: { name: string }) =>
+        a.name && !['compaction', 'title', 'summary'].includes(a.name)
+      );
+
+      if (visibleAgents.length === 0) {
+        await sender.sendText(chatId, '暂无可用角色');
+        return;
+      }
+
+      const lines: string[] = ['📋 **可用角色列表**\n'];
+
+      for (const agent of visibleAgents) {
+        const desc = agent.description ? ` - ${agent.description.slice(0, 60)}${agent.description.length > 60 ? '...' : ''}` : '';
+        lines.push(`• **${agent.name}**${desc}`);
+      }
+
+      lines.push(`\n💡 共 ${visibleAgents.length} 个角色，使用 \`/agent <名称>\` 切换`);
+
+      await sender.sendText(chatId, lines.join('\n'));
+    } catch (error) {
+      console.error('[Telegram] 获取角色列表失败:', error);
+      await sender.sendText(chatId, '❌ 获取角色列表失败');
     }
   }
 

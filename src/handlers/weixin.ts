@@ -16,6 +16,7 @@ import { parseCommand, type ParsedCommand } from '../commands/parser.js';
 import { DirectoryPolicy } from '../utils/directory-policy.js';
 import { buildSessionTimestamp } from '../utils/session-title.js';
 import type { EffortLevel } from '../commands/effort.js';
+import { normalizeEffortLevel, KNOWN_EFFORT_LEVELS } from '../commands/effort.js';
 import { permissionHandler } from '../permissions/handler.js';
 import { questionHandler, type PendingQuestion } from '../opencode/question-handler.js';
 import { parseQuestionAnswerText } from '../opencode/question-parser.js';
@@ -29,13 +30,15 @@ const WEIXIN_HELP_TEXT = `📖 **微信 × OpenCode 机器人指南**
 🛠️ **常用命令**
 • \`/help\` 显示帮助
 • \`/model\` 查看当前模型
-• \`/model <名称>\` 切换模型 (e.g. \`/model gpt-4\`)
+• \`/model <名称>\` 切换模型
+• \`/models\` 列出所有可用模型
 • \`/agent\` 查看当前角色
 • \`/agent <名称>\` 切换角色
+• \`/agents\` 列出所有可用角色
 • \`/effort\` 查看当前强度
 • \`/effort <档位>\` 设置会话强度 (low/high/xhigh)
-• \`/stop\` 停止当前回答
 • \`/undo\` 撤回上一轮对话
+• \`/stop\` 停止当前回答
 • \`/compact\` 压缩上下文
 
 ⚙️ **会话管理**
@@ -489,69 +492,589 @@ export class WeixinHandler {
   ): Promise<void> {
     const { conversationId } = event;
 
-    switch (command.type) {
-      case 'help':
-        await sender.sendText(conversationId, WEIXIN_HELP_TEXT);
-        break;
+    try {
+      switch (command.type) {
+        case 'help':
+          await sender.sendText(conversationId, WEIXIN_HELP_TEXT);
+          break;
 
-      case 'session': {
-        if (command.sessionAction === 'new') {
-          const title = `微信会话-${buildSessionTimestamp()}`;
-          const session = await opencodeClient.createSession(title);
-          if (session) {
-            chatSessionStore.setSessionByConversation('weixin', conversationId, session.id, event.senderId, title, {
-              chatType: event.chatType || 'p2p',
-              resolvedDirectory: session.directory,
-            });
-            await sender.sendText(conversationId, `已创建新会话：${session.id.slice(0, 8)}...`);
+        case 'status': {
+          const sessionId = chatSessionStore.getSessionIdByConversation('weixin', conversationId);
+          const session = chatSessionStore.getSessionByConversation('weixin', conversationId);
+          const status = sessionId
+            ? `当前绑定会话: ${sessionId.slice(0, 8)}...\n工作目录: ${session?.resolvedDirectory || '未设置'}`
+            : '未绑定会话';
+          await sender.sendText(conversationId, `🤖 **OpenCode 状态**\n\n${status}`);
+          break;
+        }
+
+        case 'session':
+          if (command.sessionAction === 'new') {
+            await this.handleNewSession(conversationId, event.senderId, command.sessionDirectory, command.sessionName, sender);
+          } else if (command.sessionAction === 'switch' && command.sessionId) {
+            await this.handleSwitchSession(conversationId, command.sessionId, event.senderId, sender);
           } else {
-            await sender.sendText(conversationId, '创建会话失败');
+            await sender.sendText(conversationId, '用法: /session new 或 /session <sessionId>');
           }
-        } else {
-          await sender.sendText(conversationId, '会话操作：/session new - 创建新会话');
-        }
-        break;
-      }
+          break;
 
-      case 'clear': {
-        const sessionId = chatSessionStore.getSessionIdByConversation('weixin', conversationId);
-        if (sessionId) {
-          chatSessionStore.removeSessionByConversation('weixin', conversationId);
-          outputBuffer.clear(`chat:${conversationId}`);
-          await sender.sendText(conversationId, '会话已清除，发送消息将创建新会话');
-        } else {
-          await sender.sendText(conversationId, '当前没有活跃会话');
-        }
-        break;
-      }
+        case 'sessions':
+          await this.handleListSessions(conversationId, command.listAll ?? false, sender);
+          break;
 
-      case 'status': {
-        const sessionId = chatSessionStore.getSessionIdByConversation('weixin', conversationId);
-        const session = sessionId ? chatSessionStore.getSession(sessionId) : null;
-        if (session) {
-          const info = `会话ID: ${sessionId?.slice(0, 12)}...
-目录: ${session.resolvedDirectory || '默认'}`;
-          await sender.sendText(conversationId, info);
-        } else {
-          await sender.sendText(conversationId, '当前没有绑定会话');
-        }
-        break;
-      }
+        case 'model':
+          await this.handleModel(conversationId, command.modelName, sender);
+          break;
 
-      case 'stop': {
-        const sessionId = chatSessionStore.getSessionIdByConversation('weixin', conversationId);
-        if (sessionId) {
-          await opencodeClient.abortSession(sessionId);
-          await sender.sendText(conversationId, '已发送中断请求');
-        } else {
-          await sender.sendText(conversationId, '当前没有活跃的会话');
-        }
-        break;
-      }
+        case 'models':
+          await this.handleModels(conversationId, sender);
+          break;
 
-      default:
-        await sender.sendText(conversationId, `未知命令：${command.type}。发送 /help 查看帮助`);
+        case 'agent':
+          await this.handleAgent(conversationId, command.agentName, sender);
+          break;
+
+        case 'agents':
+          await this.handleAgents(conversationId, sender);
+          break;
+
+        case 'effort':
+          await this.handleEffort(conversationId, command, sender);
+          break;
+
+        case 'stop': {
+          const sessionId = chatSessionStore.getSessionIdByConversation('weixin', conversationId);
+          if (sessionId) {
+            await opencodeClient.abortSession(sessionId);
+            await sender.sendText(conversationId, '⏹️ 已发送中断请求');
+          } else {
+            await sender.sendText(conversationId, '当前没有活跃的会话');
+          }
+          break;
+        }
+
+        case 'undo':
+          await this.handleUndo(conversationId, sender);
+          break;
+
+        case 'compact':
+          await this.handleCompact(conversationId, sender);
+          break;
+
+        case 'rename':
+          await this.handleRename(conversationId, command.renameTitle, sender);
+          break;
+
+        case 'clear':
+          await this.handleNewSession(conversationId, event.senderId, undefined, undefined, sender);
+          break;
+
+        case 'project':
+          if (command.projectAction === 'list') {
+            await this.handleProjectList(conversationId, sender);
+          } else if (command.projectAction === 'default_show') {
+            await this.handleProjectDefaultShow(conversationId, sender);
+          } else if (command.projectAction === 'default_set' && command.projectValue) {
+            await this.handleProjectDefaultSet(conversationId, command.projectValue, sender);
+          } else if (command.projectAction === 'default_clear') {
+            await this.handleProjectDefaultClear(conversationId, sender);
+          } else {
+            await sender.sendText(conversationId, '用法: /project list 或 /project default set <路径或别名>');
+          }
+          break;
+
+        default:
+          await sender.sendText(conversationId, `命令 "${command.type}" 暂不支持\n使用 /help 查看可用命令`);
+          break;
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[Weixin] 命令执行失败:', error);
+      await sender.sendText(conversationId, `❌ 命令执行出错: ${errorMessage}`);
     }
+  }
+
+  /**
+   * 创建新会话
+   */
+  private async handleNewSession(
+    conversationId: string,
+    senderId: string,
+    sessionDirectory?: string,
+    sessionName?: string,
+    sender?: PlatformSender
+  ): Promise<void> {
+    const title = sessionName || `微信会话-${buildSessionTimestamp()}`;
+    const dirResult = DirectoryPolicy.resolve({ chatDefaultDirectory: sessionDirectory });
+    const effectiveDir = dirResult.ok ? dirResult.directory : undefined;
+    const session = await opencodeClient.createSession(title, effectiveDir);
+    if (session) {
+      chatSessionStore.setSessionByConversation('weixin', conversationId, session.id, senderId, title, {
+        chatType: 'p2p',
+        resolvedDirectory: session.directory,
+      });
+      await sender?.sendText(conversationId, `✅ 已创建新会话：${session.id.slice(0, 8)}...`);
+    } else {
+      await sender?.sendText(conversationId, '❌ 创建会话失败');
+    }
+  }
+
+  /**
+   * 切换到已有会话
+   */
+  private async handleSwitchSession(
+    conversationId: string,
+    targetSessionId: string,
+    senderId: string,
+    sender?: PlatformSender
+  ): Promise<void> {
+    try {
+      const sessions = await opencodeClient.listSessionsAcrossProjects();
+      const target = sessions.find((s: { id: string }) => s.id === targetSessionId || s.id.startsWith(targetSessionId));
+      if (!target) {
+        await sender?.sendText(conversationId, `❌ 未找到会话: ${targetSessionId}`);
+        return;
+      }
+      chatSessionStore.setSessionByConversation('weixin', conversationId, target.id, senderId, target.title || '未命名', {
+        chatType: 'p2p',
+        resolvedDirectory: target.directory,
+      });
+      await sender?.sendText(conversationId, `✅ 已切换到会话：${target.id.slice(0, 8)}...`);
+    } catch (error) {
+      console.error('[Weixin] 切换会话失败:', error);
+      await sender?.sendText(conversationId, '❌ 切换会话失败');
+    }
+  }
+
+  /**
+   * 列出会话
+   */
+  private async handleListSessions(
+    conversationId: string,
+    listAll: boolean,
+    sender?: PlatformSender
+  ): Promise<void> {
+    try {
+      const sessions = await opencodeClient.listSessionsAcrossProjects();
+      if (sessions.length === 0) {
+        await sender?.sendText(conversationId, '暂无会话');
+        return;
+      }
+
+      const currentSession = chatSessionStore.getSessionByConversation('weixin', conversationId);
+      const lines = sessions.slice(0, 20).map((s: { id: string; title?: string; directory?: string }) => {
+        const isCurrent = currentSession?.sessionId === s.id;
+        const prefix = isCurrent ? '👉 ' : '   ';
+        return `${prefix}${s.id.slice(0, 8)}... ${s.title || '未命名'}${s.directory ? ` (${s.directory})` : ''}`;
+      });
+
+      let result = lines.join('\n');
+      if (sessions.length > 20) {
+        result += `\n\n... 共 ${sessions.length} 个会话`;
+      }
+      await sender?.sendText(conversationId, `📋 **会话列表**\n\n${result}`);
+    } catch (error) {
+      console.error('[Weixin] 获取会话列表失败:', error);
+      await sender?.sendText(conversationId, '❌ 获取会话列表失败');
+    }
+  }
+
+  /**
+   * 处理模型切换
+   */
+  private async handleModel(
+    conversationId: string,
+    modelName: string | undefined,
+    sender?: PlatformSender
+  ): Promise<void> {
+    try {
+      const providersResult = await opencodeClient.getProviders();
+      const providers = Array.isArray(providersResult.providers) ? providersResult.providers : [];
+
+      if (!modelName) {
+        const session = chatSessionStore.getSessionByConversation('weixin', conversationId);
+        if (session?.preferredModel) {
+          await sender?.sendText(conversationId, `当前模型: ${session.preferredModel}`);
+        } else if (modelConfig.defaultProvider && modelConfig.defaultModel) {
+          await sender?.sendText(conversationId, `当前模型: ${modelConfig.defaultProvider}:${modelConfig.defaultModel} (默认)`);
+        } else {
+          await sender?.sendText(conversationId, '当前未设置模型，使用 OpenCode 默认');
+        }
+        return;
+      }
+
+      const normalizedModelName = modelName.trim();
+      chatSessionStore.updateConfigByConversation('weixin', conversationId, { preferredModel: normalizedModelName });
+      await sender?.sendText(conversationId, `✅ 已设置模型: ${normalizedModelName}`);
+    } catch (error) {
+      console.error('[Weixin] 设置模型失败:', error);
+      await sender?.sendText(conversationId, '❌ 设置模型失败');
+    }
+  }
+
+  /**
+   * 处理角色切换
+   */
+  private async handleAgent(
+    conversationId: string,
+    agentName: string | undefined,
+    sender?: PlatformSender
+  ): Promise<void> {
+    try {
+      const agents = await opencodeClient.getAgents();
+
+      if (!agentName) {
+        const session = chatSessionStore.getSessionByConversation('weixin', conversationId);
+        const currentAgent = session?.preferredAgent;
+        if (currentAgent) {
+          const agentInfo = agents.find((a: { name: string }) => a.name === currentAgent);
+          await sender?.sendText(conversationId, `当前角色: ${currentAgent}${agentInfo?.description ? `\n${agentInfo.description.slice(0, 100)}` : ''}`);
+        } else {
+          await sender?.sendText(conversationId, '当前使用默认角色');
+        }
+        return;
+      }
+
+      const normalizedAgentName = agentName.trim().toLowerCase();
+      if (normalizedAgentName === 'off' || normalizedAgentName === 'default') {
+        chatSessionStore.updateConfigByConversation('weixin', conversationId, { preferredAgent: undefined });
+        await sender?.sendText(conversationId, '✅ 已切换为默认角色');
+        return;
+      }
+
+      const matched = agents.find((a: { name: string }) => a.name.toLowerCase() === normalizedAgentName || a.name === agentName.trim());
+      if (matched) {
+        chatSessionStore.updateConfigByConversation('weixin', conversationId, { preferredAgent: matched.name });
+        await sender?.sendText(conversationId, `✅ 已切换角色: ${matched.name}`);
+      } else {
+        await sender?.sendText(conversationId, `❌ 未找到角色: ${agentName}\n使用 /agent 查看可用角色`);
+      }
+    } catch (error) {
+      console.error('[Weixin] 设置角色失败:', error);
+      await sender?.sendText(conversationId, '❌ 设置角色失败');
+    }
+  }
+
+  /**
+   * 列出所有可用模型
+   */
+  private async handleModels(conversationId: string, sender?: PlatformSender): Promise<void> {
+    try {
+      const providersResult = await opencodeClient.getProviders();
+      const providers = Array.isArray(providersResult.providers) ? providersResult.providers : [];
+
+      const lines: string[] = ['📋 **可用模型列表**\n'];
+      let totalCount = 0;
+
+      for (const provider of providers) {
+        const providerId = (provider as Record<string, unknown>).id as string | undefined;
+        const providerName = (provider as Record<string, unknown>).name || providerId || 'Unknown';
+        const rawModels = (provider as Record<string, unknown>).models;
+
+        const models: Array<{ id: string; name?: string }> = [];
+        if (Array.isArray(rawModels)) {
+          for (const m of rawModels) {
+            if (m && typeof m === 'object') {
+              const mr = m as Record<string, unknown>;
+              models.push({
+                id: (mr.id as string) || (mr.modelID as string) || '',
+                name: mr.name as string | undefined,
+              });
+            }
+          }
+        }
+
+        if (models.length === 0) continue;
+        lines.push(`**${providerName}**`);
+
+        for (const model of models.slice(0, 15)) {
+          const modelDisplay = model.name || model.id;
+          const modelKey = `${providerId}:${model.id}`;
+          lines.push(`  • ${modelDisplay} (\`${modelKey}\`)`);
+          totalCount++;
+        }
+
+        if (models.length > 15) {
+          lines.push(`  _... 共 ${models.length} 个模型_`);
+        }
+        lines.push('');
+      }
+
+      if (totalCount === 0) {
+        lines.push('暂无可用模型');
+      } else {
+        lines.push(`💡 共 ${totalCount} 个模型，使用 \`/model <名称>\` 切换`);
+      }
+
+      let result = lines.join('\n');
+      if (result.length > 3500) {
+        result = result.slice(0, 3400) + '\n\n... 列表过长，已截断';
+      }
+
+      await sender?.sendText(conversationId, result);
+    } catch (error) {
+      console.error('[Weixin] 获取模型列表失败:', error);
+      await sender?.sendText(conversationId, '❌ 获取模型列表失败');
+    }
+  }
+
+  /**
+   * 列出所有可用角色
+   */
+  private async handleAgents(conversationId: string, sender?: PlatformSender): Promise<void> {
+    try {
+      const agents = await opencodeClient.getAgents();
+      const visibleAgents = agents.filter((a: { name: string }) =>
+        a.name && !['compaction', 'title', 'summary'].includes(a.name)
+      );
+
+      if (visibleAgents.length === 0) {
+        await sender?.sendText(conversationId, '暂无可用角色');
+        return;
+      }
+
+      const lines: string[] = ['📋 **可用角色列表**\n'];
+
+      for (const agent of visibleAgents) {
+        const desc = agent.description ? ` - ${agent.description.slice(0, 60)}${agent.description.length > 60 ? '...' : ''}` : '';
+        lines.push(`• **${agent.name}**${desc}`);
+      }
+
+      lines.push(`\n💡 共 ${visibleAgents.length} 个角色，使用 \`/agent <名称>\` 切换`);
+
+      await sender?.sendText(conversationId, lines.join('\n'));
+    } catch (error) {
+      console.error('[Weixin] 获取角色列表失败:', error);
+      await sender?.sendText(conversationId, '❌ 获取角色列表失败');
+    }
+  }
+
+  /**
+   * 处理强度设置
+   */
+  private async handleEffort(
+    conversationId: string,
+    command: ParsedCommand,
+    sender?: PlatformSender
+  ): Promise<void> {
+    const session = chatSessionStore.getSessionByConversation('weixin', conversationId);
+
+    if (command.effortReset) {
+      chatSessionStore.updateConfigByConversation('weixin', conversationId, { preferredEffort: undefined });
+      await sender?.sendText(conversationId, '✅ 已清除会话强度，恢复模型默认');
+      return;
+    }
+
+    if (command.effortLevel) {
+      chatSessionStore.updateConfigByConversation('weixin', conversationId, { preferredEffort: command.effortLevel });
+      await sender?.sendText(conversationId, `✅ 已设置会话强度: ${command.effortLevel}`);
+      return;
+    }
+
+    const currentEffort = session?.preferredEffort;
+    if (currentEffort) {
+      await sender?.sendText(conversationId, `当前会话强度: ${currentEffort}\n\n可用档位: ${KNOWN_EFFORT_LEVELS.join(' / ')}`);
+    } else {
+      await sender?.sendText(conversationId, `当前未设置会话强度，使用模型默认\n\n可用档位: ${KNOWN_EFFORT_LEVELS.join(' / ')}`);
+    }
+  }
+
+  /**
+   * 处理撤回
+   */
+  private async handleUndo(conversationId: string, sender?: PlatformSender): Promise<void> {
+    const session = chatSessionStore.getSessionByConversation('weixin', conversationId);
+    if (!session || !session.sessionId) {
+      await sender?.sendText(conversationId, '❌ 当前没有活跃的会话');
+      return;
+    }
+
+    console.log(`[Weixin] 尝试撤回会话 ${session.sessionId} 的最后一次交互`);
+
+    try {
+      const lastInteraction = chatSessionStore.popInteractionByConversation
+        ? chatSessionStore.popInteractionByConversation('weixin', conversationId)
+        : null;
+
+      if (!lastInteraction) {
+        await sender?.sendText(conversationId, '⚠️ 没有可撤回的消息');
+        return;
+      }
+
+      let targetRevertId = '';
+      try {
+        const messages = await opencodeClient.getSessionMessages(session.sessionId);
+        const aiMsgIndex = messages.findIndex(m => m.info.id === lastInteraction.openCodeMsgId);
+
+        if (aiMsgIndex !== -1 && aiMsgIndex >= 1) {
+          targetRevertId = messages[aiMsgIndex - 1].info.id;
+        } else if (messages.length >= 2) {
+          targetRevertId = messages[messages.length - 2].info.id;
+        } else if (messages.length === 1) {
+          targetRevertId = messages[0].info.id;
+        }
+      } catch (e) {
+        console.warn('[Weixin Undo] Failed to fetch messages for revert calculation', e);
+      }
+
+      if (targetRevertId) {
+        await opencodeClient.revertMessage(session.sessionId, targetRevertId);
+      }
+
+      await sender?.sendText(conversationId, '✅ 已撤回上一轮对话');
+    } catch (error) {
+      console.error('[Weixin Undo] 执行失败:', error);
+      await sender?.sendText(conversationId, '❌ 撤回失败');
+    }
+  }
+
+  /**
+   * 处理压缩上下文
+   */
+  private async handleCompact(conversationId: string, sender?: PlatformSender): Promise<void> {
+    const sessionId = chatSessionStore.getSessionIdByConversation('weixin', conversationId);
+    if (!sessionId) {
+      await sender?.sendText(conversationId, '❌ 当前没有活跃的会话');
+      return;
+    }
+
+    try {
+      let providerId = modelConfig.defaultProvider;
+      let modelId = modelConfig.defaultModel;
+
+      const session = chatSessionStore.getSessionByConversation('weixin', conversationId);
+      if (session?.preferredModel) {
+        const [p, m] = session.preferredModel.split(':');
+        if (p && m) {
+          providerId = p;
+          modelId = m;
+        }
+      }
+
+      if (!providerId || !modelId) {
+        await sender?.sendText(conversationId, '❌ 未找到可用模型，无法执行上下文压缩');
+        return;
+      }
+
+      const compacted = await opencodeClient.summarizeSession(sessionId, providerId, modelId);
+      if (compacted) {
+        await sender?.sendText(conversationId, `✅ 上下文压缩完成（模型: ${providerId}:${modelId}）`);
+      } else {
+        await sender?.sendText(conversationId, '❌ 上下文压缩失败');
+      }
+    } catch (error) {
+      console.error('[Weixin] 压缩失败:', error);
+      await sender?.sendText(conversationId, '❌ 上下文压缩失败');
+    }
+  }
+
+  /**
+   * 处理重命名
+   */
+  private async handleRename(
+    conversationId: string,
+    newTitle: string | undefined,
+    sender?: PlatformSender
+  ): Promise<void> {
+    const sessionId = chatSessionStore.getSessionIdByConversation('weixin', conversationId);
+    if (!sessionId) {
+      await sender?.sendText(conversationId, '❌ 当前没有活跃的会话');
+      return;
+    }
+
+    if (!newTitle || !newTitle.trim()) {
+      await sender?.sendText(conversationId, '用法: /rename <新名称>');
+      return;
+    }
+
+    const trimmedTitle = newTitle.trim();
+    if (trimmedTitle.length > 100) {
+      await sender?.sendText(conversationId, `❌ 会话名称过长（${trimmedTitle.length} 字符），请控制在 100 字符以内`);
+      return;
+    }
+
+    try {
+      const success = await opencodeClient.updateSession(sessionId, trimmedTitle);
+      if (success) {
+        chatSessionStore.updateTitleByConversation('weixin', conversationId, trimmedTitle);
+        await sender?.sendText(conversationId, `✅ 会话已重命名为 "${trimmedTitle}"`);
+      } else {
+        await sender?.sendText(conversationId, '❌ 重命名失败');
+      }
+    } catch (error) {
+      console.error('[Weixin] 重命名失败:', error);
+      await sender?.sendText(conversationId, '❌ 重命名失败');
+    }
+  }
+
+  /**
+   * 处理项目列表
+   */
+  private async handleProjectList(conversationId: string, sender?: PlatformSender): Promise<void> {
+    try {
+      const storeKnownDirs = chatSessionStore.getKnownDirectories();
+      let knownDirs: string[] = [...storeKnownDirs];
+
+      try {
+        const sessions = await opencodeClient.listSessionsAcrossProjects();
+        const sessionDirs = sessions
+          .map((s: { directory?: string }) => s.directory)
+          .filter((d): d is string => Boolean(d));
+        knownDirs = [...new Set([...knownDirs, ...sessionDirs])];
+      } catch {
+        // 忽略错误
+      }
+
+      const projects = DirectoryPolicy.listAvailableProjects(knownDirs);
+
+      if (projects.length === 0) {
+        await sender?.sendText(conversationId, '暂无可用项目');
+        return;
+      }
+
+      const lines = projects.map((project, index) => {
+        const tag = project.source === 'alias' ? '🏷️' : '📂';
+        return `${index + 1}. ${tag} ${project.name} - ${project.directory}`;
+      });
+
+      await sender?.sendText(conversationId, `📁 **项目列表**\n\n${lines.join('\n')}`);
+    } catch (error) {
+      console.error('[Weixin] 获取项目列表失败:', error);
+      await sender?.sendText(conversationId, '❌ 获取项目列表失败');
+    }
+  }
+
+  /**
+   * 显示默认项目
+   */
+  private async handleProjectDefaultShow(conversationId: string, sender?: PlatformSender): Promise<void> {
+    const session = chatSessionStore.getSessionByConversation('weixin', conversationId);
+    const defaultDir = session?.defaultDirectory;
+    if (defaultDir) {
+      await sender?.sendText(conversationId, `当前默认项目: ${defaultDir}`);
+    } else {
+      await sender?.sendText(conversationId, '未设置默认项目');
+    }
+  }
+
+  /**
+   * 设置默认项目
+   */
+  private async handleProjectDefaultSet(
+    conversationId: string,
+    projectValue: string,
+    sender?: PlatformSender
+  ): Promise<void> {
+    chatSessionStore.updateConfigByConversation('weixin', conversationId, { defaultDirectory: projectValue });
+    await sender?.sendText(conversationId, `✅ 已设置默认项目: ${projectValue}`);
+  }
+
+  /**
+   * 清除默认项目
+   */
+  private async handleProjectDefaultClear(conversationId: string, sender?: PlatformSender): Promise<void> {
+    chatSessionStore.updateConfigByConversation('weixin', conversationId, { defaultDirectory: undefined });
+    await sender?.sendText(conversationId, '✅ 已清除默认项目');
   }
 
   /**

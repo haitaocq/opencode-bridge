@@ -12,7 +12,9 @@ export type CommandType =
   | 'undo'         // 撤回上一步
   | 'compact'      // 压缩上下文
   | 'model'        // 切换模型
+  | 'models'       // 列出可用模型
   | 'agent'        // 切换Agent
+  | 'agents'       // 列出可用角色
   | 'role'         // 角色相关操作
   | 'session'      // 会话操作
   | 'project'      // 项目/目录操作
@@ -269,11 +271,17 @@ export function parseCommand(text: string): ParsedCommand {
         }
         return { type: 'model' }; // 无参数时显示当前模型
 
+      case 'models':
+        return { type: 'models' }; // 列出所有可用模型
+
       case 'agent':
         if (args.length > 0) {
           return { type: 'agent', agentName: args.join(' ') };
         }
         return { type: 'agent' }; // 无参数时显示当前agent
+
+      case 'agents':
+        return { type: 'agents' }; // 列出所有可用角色
 
       case 'role':
       case '角色': {

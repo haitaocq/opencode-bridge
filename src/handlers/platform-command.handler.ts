@@ -106,8 +106,16 @@ export class PlatformCommandHandler {
           await this.handleModel(chatId, context.senderId, context.chatType, command.modelName, sender);
           break;
 
+        case 'models':
+          await this.handleModels(chatId, sender);
+          break;
+
         case 'agent':
           await this.handleAgent(chatId, context.senderId, context.chatType, command.agentName, sender);
+          break;
+
+        case 'agents':
+          await this.handleAgents(chatId, sender);
           break;
 
         case 'effort':
@@ -151,12 +159,14 @@ export class PlatformCommandHandler {
 🛠️ **常用命令**
 • \`/help\` 显示帮助
 • \`/model\` 查看当前模型
-• \`/model <名称>\` 切换模型 (e.g. \`/model gpt-4\`)
+• \`/model <名称>\` 切换模型
+• \`/models\` 列出所有可用模型
 • \`/agent\` 查看当前角色
 • \`/agent <名称>\` 切换角色
+• \`/agents\` 列出所有可用角色
 • \`/effort\` 查看当前强度
 • \`/effort <档位>\` 设置会话强度
-• \`/panel\` 推送交互式控制面板
+• \`/panel\` 显示控制面板
 • \`/undo\` 撤回上一轮对话
 • \`/stop\` 停止当前回答
 • \`/compact\` 压缩上下文
@@ -476,6 +486,53 @@ export class PlatformCommandHandler {
     }
   }
 
+  private async handleModels(chatId: string, sender: PlatformSender): Promise<void> {
+    try {
+      const providersResult = await opencodeClient.getProviders();
+      const providers = Array.isArray(providersResult.providers) ? providersResult.providers : [];
+
+      const lines: string[] = ['📋 **可用模型列表**\n'];
+      let totalCount = 0;
+
+      for (const provider of providers) {
+        const providerModels = this.extractProviderModels(provider);
+        if (providerModels.length === 0) continue;
+
+        const providerName = (provider as Record<string, unknown>).name || (provider as Record<string, unknown>).id || 'Unknown';
+        lines.push(`**${providerName}**`);
+
+        for (const model of providerModels.slice(0, 20)) {
+          const modelDisplay = model.modelName || model.modelId;
+          const modelKey = `${model.providerId}:${model.modelId}`;
+          lines.push(`  • ${modelDisplay} (\`${modelKey}\`)`);
+          totalCount++;
+        }
+
+        if (providerModels.length > 20) {
+          lines.push(`  _... 共 ${providerModels.length} 个模型_`);
+        }
+        lines.push('');
+      }
+
+      if (totalCount === 0) {
+        lines.push('暂无可用模型');
+      } else {
+        lines.push(`💡 共 ${totalCount} 个模型，使用 \`/model <名称>\` 切换`);
+      }
+
+      // 消息可能很长，截断
+      let result = lines.join('\n');
+      if (result.length > 4000) {
+        result = result.slice(0, 3900) + '\n\n... 列表过长，请使用 /model <关键词> 搜索';
+      }
+
+      await this.sendText(sender, chatId, result);
+    } catch (error) {
+      console.error(`[${this.platform}] 获取模型列表失败:`, error);
+      await this.sendText(sender, chatId, '❌ 获取模型列表失败');
+    }
+  }
+
   private extractProviderModels(provider: unknown): ProviderModelMeta[] {
     if (!provider || typeof provider !== 'object') return [];
 
@@ -599,6 +656,34 @@ export class PlatformCommandHandler {
     } catch (error) {
       console.error(`[${this.platform}] 设置角色失败:`, error);
       await this.sendText(sender, chatId, '❌ 设置角色失败');
+    }
+  }
+
+  private async handleAgents(chatId: string, sender: PlatformSender): Promise<void> {
+    try {
+      const agents = await opencodeClient.getAgents();
+      const visibleAgents = agents.filter((a: OpencodeAgentInfo) =>
+        a.name && !['compaction', 'title', 'summary'].includes(a.name)
+      );
+
+      if (visibleAgents.length === 0) {
+        await this.sendText(sender, chatId, '暂无可用角色');
+        return;
+      }
+
+      const lines: string[] = ['📋 **可用角色列表**\n'];
+
+      for (const agent of visibleAgents) {
+        const desc = agent.description ? ` - ${agent.description.slice(0, 80)}${agent.description.length > 80 ? '...' : ''}` : '';
+        lines.push(`• **${agent.name}**${desc}`);
+      }
+
+      lines.push(`\n💡 共 ${visibleAgents.length} 个角色，使用 \`/agent <名称>\` 切换`);
+
+      await this.sendText(sender, chatId, lines.join('\n'));
+    } catch (error) {
+      console.error(`[${this.platform}] 获取角色列表失败:`, error);
+      await this.sendText(sender, chatId, '❌ 获取角色列表失败');
     }
   }
 
