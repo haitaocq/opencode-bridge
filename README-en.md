@@ -86,12 +86,12 @@ cd opencode-bridge
 **Linux/macOS:**
 ```bash
 chmod +x ./scripts/deploy.sh
-./scripts/deploy.sh guide
+./scripts/deploy.sh
 ```
 
 **Windows PowerShell:**
 ```powershell
-.\scripts\deploy.ps1 guide
+.\scripts\deploy.ps1
 ```
 
 This command will automatically:
