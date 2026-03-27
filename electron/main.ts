@@ -12,7 +12,8 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog } from 'elec
 import path from 'node:path';
 import { spawn, ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { autoUpdater } from 'electron-updater';
+import electronUpdater from 'electron-updater';
+const { autoUpdater } = electronUpdater;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -46,11 +47,13 @@ function startBackend() {
     return;
   }
 
-  const backendPath = isDev
-    ? path.join(__dirname, '../../dist/index.js')
-    : path.join(process.resourcesPath, 'app/dist/index.js');
+  // 获取应用根目录
+  const appPath = isDev ? path.resolve(__dirname, '..') : app.getAppPath();
+  const backendPath = path.join(appPath, 'dist/index.js');
 
   const dataPath = getUserDataPath();
+  console.log('[Electron] __dirname:', __dirname);
+  console.log('[Electron] App path:', appPath);
   console.log('[Electron] Data directory:', dataPath);
   console.log('[Electron] Starting backend from:', backendPath);
 
@@ -136,7 +139,7 @@ function createWindow() {
 
   // 关闭窗口时最小化到托盘而非退出
   mainWindow.on('close', (event) => {
-    if (!app.isQuitting) {
+    if (!(app as any).isQuitting) {
       event.preventDefault();
       mainWindow?.hide();
     }
@@ -191,7 +194,7 @@ function createTray() {
     {
       label: '退出',
       click: () => {
-        app.isQuitting = true;
+        (app as any).isQuitting = true;
         app.quit();
       },
     },
@@ -303,13 +306,6 @@ app.on('window-all-closed', () => {
 
 // 应用退出前清理
 app.on('before-quit', () => {
-  app.isQuitting = true;
+  (app as any).isQuitting = true;
   stopBackend();
 });
-
-// 导出类型声明
-declare module 'electron' {
-  interface App {
-    isQuitting?: boolean;
-  }
-}

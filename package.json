@@ -85,7 +85,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^22.10.0",
     "@types/qrcode": "^1.5.6",
-    "electron": "^34.0.0",
+    "electron": "^34.5.8",
     "electron-builder": "^25.1.8",
     "electron-rebuild": "^3.2.9",
     "puppeteer": "^24.40.0",
@@ -127,19 +127,25 @@
       {
         "from": "dist",
         "to": "app/dist",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "assets",
         "to": "app/assets",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.ico"
@@ -159,7 +165,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "assets/icon-1024.png",
@@ -186,7 +195,10 @@
       ]
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "assets/icon.png",
       "category": "Network;Chat;InstantMessaging;"
     },
