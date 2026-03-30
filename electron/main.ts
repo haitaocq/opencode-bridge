@@ -96,6 +96,19 @@ function stopBackend() {
     console.log('[Electron] Stopping backend...');
     backendProcess.kill('SIGTERM');
     backendProcess = null;
+    // 显示服务已停止的提示页面
+    mainWindow?.loadURL(`data:text/html,
+      <html>
+        <head><meta charset="UTF-8"><title>服务已停止</title></head>
+        <body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;font-family:sans-serif;background:#f5f5f5;">
+          <div style="text-align:center;padding:40px;background:white;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);">
+            <h2 style="color:#e74c3c;margin-bottom:16px;">⚠️ 服务已停止</h2>
+            <p style="color:#666;margin-bottom:20px;">后端服务已被手动停止，请通过托盘菜单重启服务。</p>
+            <button onclick="location.reload()" style="padding:10px 20px;background:#3498db;color:white;border:none;border-radius:4px;cursor:pointer;">重试</button>
+          </div>
+        </body>
+      </html>
+    `);
   }
 }
 
@@ -236,6 +249,12 @@ function createTray() {
     },
     { type: 'separator' },
     {
+      label: '停止服务',
+      click: () => {
+        stopBackend();
+      },
+    },
+    {
       label: '重启服务',
       click: () => {
         stopBackend();
@@ -246,6 +265,70 @@ function createTray() {
       label: '打开数据目录',
       click: () => {
         shell.openPath(getUserDataPath());
+      },
+    },
+    { type: 'separator' },
+    {
+      label: '重置管理密码',
+      click: async () => {
+        const result = await dialog.showMessageBox(mainWindow!, {
+          type: 'warning',
+          title: '重置管理密码',
+          message: '确定要重置管理密码吗？',
+          detail: '重置后需要重新设置密码才能访问管理面板。\n密码文件位于数据目录中的 config.db。',
+          buttons: ['确定重置', '取消'],
+          defaultId: 1,
+          cancelId: 1,
+        });
+
+        if (result.response === 0) {
+          // 通过 HTTP API 重置密码
+          try {
+            const http = require('http');
+            const req = http.request({
+              hostname: 'localhost',
+              port: ADMIN_PORT,
+              path: '/api/admin/reset-password',
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            }, (res: any) => {
+              if (res.statusCode === 200) {
+                dialog.showMessageBox(mainWindow!, {
+                  type: 'info',
+                  title: '密码已重置',
+                  message: '管理密码已重置，请重新打开窗口设置新密码。',
+                  buttons: ['确定'],
+                });
+                mainWindow?.loadURL(`http://localhost:${ADMIN_PORT}`);
+              } else {
+                dialog.showMessageBox(mainWindow!, {
+                  type: 'error',
+                  title: '重置失败',
+                  message: '密码重置失败，请检查服务是否运行。',
+                  buttons: ['确定'],
+                });
+              }
+            });
+            req.on('error', () => {
+              dialog.showMessageBox(mainWindow!, {
+                type: 'error',
+                title: '重置失败',
+                message: '无法连接到服务，请先重启服务后重试。',
+                buttons: ['确定'],
+              });
+            });
+            req.end();
+          } catch {
+            dialog.showMessageBox(mainWindow!, {
+              type: 'error',
+              title: '重置失败',
+              message: '密码重置操作失败。',
+              buttons: ['确定'],
+            });
+          }
+        }
       },
     },
     { type: 'separator' },

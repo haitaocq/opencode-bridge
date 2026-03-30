@@ -440,8 +440,9 @@ export const configApi = {
     return res.data
   },
 
-  async restart(): Promise<void> {
-    await http.post('/admin/restart')
+  async restart(): Promise<{ ok: boolean; pid?: number; message: string }> {
+    const res = await http.post<{ ok: boolean; pid?: number; message: string }>('/admin/restart')
+    return res.data
   },
 
   async getModels(): Promise<{ providers: ModelProvider[]; raw: string[] }> {

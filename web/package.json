@@ -1,6 +1,6 @@
 {
   "name": "opencode-bridge-admin-web",
-  "version": "2.9.55",
+  "version": "2.9.56",
   "private": true,
   "type": "module",
   "scripts": {

@@ -46,6 +46,18 @@ export function createAdminRoutes(options: AdminRoutesOptions): express.Router {
     });
   });
 
+  // ── POST /api/admin/reset-password（重置密码，用于密码恢复）
+  router.post('/reset-password', (_req, res) => {
+    // 清除密码和密码修改时间
+    configStore.setAdminPassword('');
+    configStore.setPasswordChangedAt('');
+
+    res.json({
+      ok: true,
+      message: '密码已重置，请重新设置密码',
+    });
+  });
+
   // ── PUT /api/admin/password（修改密码或首次设置密码）
   router.put('/password', (req, res) => {
     const { oldPassword, newPassword } = req.body;
@@ -56,7 +68,7 @@ export function createAdminRoutes(options: AdminRoutesOptions): express.Router {
     }
 
     const currentPassword = configStore.getAdminPassword();
-    const isFirstSetup = !currentPassword;
+    const isFirstSetup = !currentPassword || currentPassword === '';
 
     // 首次设置密码：无需验证旧密码
     if (isFirstSetup) {
@@ -86,16 +98,14 @@ export function createAdminRoutes(options: AdminRoutesOptions): express.Router {
       return;
     }
 
-    res.json({ ok: true, message: '正在重启 Bridge 服务...' });
+    // 同步等待重启完成
+    const result = await bridgeManager.restart();
 
-    // 异步重启，不阻塞响应
-    bridgeManager.restart().then(result => {
-      if (result.success) {
-        console.log(`[Admin] Bridge 重启成功，PID=${result.pid}`);
-      } else {
-        console.error(`[Admin] Bridge 重启失败: ${result.error}`);
-      }
-    });
+    if (result.success) {
+      res.json({ ok: true, pid: result.pid, message: 'Bridge 重启成功' });
+    } else {
+      res.status(500).json({ error: result.error || '重启失败' });
+    }
   });
 
   // ── POST /api/admin/stop-bridge（仅停止 Bridge 进程）
