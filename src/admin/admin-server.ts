@@ -126,6 +126,13 @@ export function createAdminServer(options: AdminServerOptions): { start: () => v
 
   app.use(express.json());
 
+  // ── POST /api/admin/reset-password（无需认证，用于密码恢复）
+  app.post('/api/admin/reset-password', (_req, res) => {
+    configStore.setAdminPassword('');
+    configStore.setPasswordChangedAt('');
+    res.json({ ok: true, message: '密码已重置，请重新设置密码' });
+  });
+
   // ── 静态前端文件（dist/public）
   const publicDir = path.resolve(__dirname, '../../dist/public');
   app.use(express.static(publicDir));
