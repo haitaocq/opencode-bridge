@@ -96,6 +96,19 @@ function stopBackend() {
     console.log('[Electron] Stopping backend...');
     backendProcess.kill('SIGTERM');
     backendProcess = null;
+    // 显示服务已停止的提示页面
+    mainWindow?.loadURL(`data:text/html,
+      <html>
+        <head><meta charset="UTF-8"><title>服务已停止</title></head>
+        <body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;font-family:sans-serif;background:#f5f5f5;">
+          <div style="text-align:center;padding:40px;background:white;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);">
+            <h2 style="color:#e74c3c;margin-bottom:16px;">⚠️ 服务已停止</h2>
+            <p style="color:#666;margin-bottom:20px;">后端服务已被手动停止，请通过托盘菜单重启服务。</p>
+            <button onclick="location.reload()" style="padding:10px 20px;background:#3498db;color:white;border:none;border-radius:4px;cursor:pointer;">重试</button>
+          </div>
+        </body>
+      </html>
+    `);
   }
 }
 

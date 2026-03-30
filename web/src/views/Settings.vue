@@ -298,9 +298,17 @@ async function checkBridgeUpdate() {
 async function handleRestartBridge() {
   restarting.value = true
   try {
-    await configApi.restart()
-    ElMessage.success('Bridge 重启指令已发送')
-    setTimeout(loadStatus, 3000)
+    const result = await configApi.restart()
+    if (result.ok) {
+      ElMessageBox.alert(
+        `Bridge 服务已重启完成${result.pid ? `，新进程 PID: ${result.pid}` : ''}`,
+        '重启成功',
+        { type: 'success', confirmButtonText: '确定' }
+      )
+      await loadStatus()
+    } else {
+      ElMessage.error('重启失败')
+    }
   } catch (e: any) {
     ElMessage.error('重启失败: ' + (e.response?.data?.error || e.message))
   } finally {

@@ -122,6 +122,8 @@ async function handleLogin() {
   } catch (e: any) {
     if (e.response?.status === 401) {
       error.value = '密码错误，请重试'
+    } else if (e.message === 'Network Error' || e.code === 'ERR_NETWORK') {
+      error.value = '服务未启动，请通过托盘菜单启动服务后重试'
     } else {
       error.value = '登录失败：' + (e.message || '未知错误')
     }
